@@ -6,18 +6,25 @@ import Image from "next/image";
 import Header from "../../components/Header";
 import { supabase } from "../../lib/supabaseClient";
 
-const CATEGORIAS = [
-  { id: "pistola", label: "Pistola", icon: "/icons/pistola.png" },
-  { id: "revolver", label: "Revolver", icon: "/icons/revolver.png" },
-  { id: "espingarda-semiauto", label: "Espingarda SemiAuto", icon: "/icons/espingardaSemi.png" },
-  { id: "espingarda-repeticao", label: "Espingarda de repetição", icon: "/icons/espingardaRep.png" },
-  { id: "carabina", label: "Carabina", icon: "/icons/carabina.png" },
-  { id: "fuzil", label: "Fuzil", icon: "/icons/fuzil.png" },
-] as const;
+type Categoria = {
+  id: number;
+  nome: string;
+};
+
+// Mapeamento de nomes para ícones
+const ICON_MAP: Record<string, string> = {
+  "Pistolas": "/icons/pistola.png",
+  "Revólveres": "/icons/revolver.png",
+  "Espingarda_Semi": "/icons/espingardaSemi.png",
+  "Espingarda_Rep": "/icons/espingardaRep.png",
+  "Carabinas": "/icons/carabina.png",
+  "Fuzil": "/icons/fuzil.png",
+};
 
 export default function CategoriasPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -41,6 +48,19 @@ export default function CategoriasPage() {
         router.push("/login");
       }
     });
+
+    // Buscar categorias do banco
+    const fetchCategorias = async () => {
+      const { data } = await supabase
+        .from("categorias")
+        .select("id, nome")
+        .order("nome");
+      if (data) {
+        setCategorias(data);
+      }
+    };
+
+    fetchCategorias();
 
     return () => subscription.unsubscribe();
   }, [router]);
@@ -116,7 +136,7 @@ export default function CategoriasPage() {
 
           {/* Grid de categorias */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {CATEGORIAS.map((cat) => (
+            {categorias.map((cat) => (
               <button
                 key={cat.id}
                 type="button"
@@ -124,15 +144,17 @@ export default function CategoriasPage() {
                 style={{ backgroundColor: "#E9B20E" }}
                 onClick={() => router.push(`/produtos/${cat.id}`)}
               >
-                <Image
-                  src={cat.icon}
-                  alt={cat.label}
-                  width={40}
-                  height={40}
-                  className="h-10 w-10 shrink-0 object-contain"
-                />
+                {ICON_MAP[cat.nome] && (
+                  <Image
+                    src={ICON_MAP[cat.nome]}
+                    alt={cat.nome}
+                    width={40}
+                    height={40}
+                    className="h-10 w-10 shrink-0 object-contain"
+                  />
+                )}
                 <span className="text-base font-medium text-zinc-900">
-                  {cat.label}
+                  {cat.nome}
                 </span>
               </button>
             ))}

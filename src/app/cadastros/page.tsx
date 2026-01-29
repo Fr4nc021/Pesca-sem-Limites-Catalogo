@@ -5,21 +5,13 @@ import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import { supabase } from "../../lib/supabaseClient";
 
-const CATEGORIAS = [
-  { id: "pistola", label: "Pistola" },
-  { id: "revolver", label: "Revolver" },
-  { id: "espingarda-semiauto", label: "Espingarda SemiAuto" },
-  { id: "espingarda-repeticao", label: "Espingarda de repetição" },
-  { id: "carabina", label: "Carabina" },
-  { id: "fuzil", label: "Fuzil" },
-];
-
 type Marca = { id: string; nome: string };
 type Calibre = { id: string; nome: string };
 type Funcionamento = { id: string; nome: string };
+type Categoria = { id: number; nome: string };
 
 type FormArma = {
-  categoria: string;
+  categoria_id: string;
   nome: string;
   preco: string;
   calibre_id: string;
@@ -32,7 +24,7 @@ type FormArma = {
 };
 
 const initialForm: FormArma = {
-  categoria: "",
+  categoria_id: "",
   nome: "",
   preco: "",
   calibre_id: "",
@@ -56,6 +48,7 @@ export default function CadastrosPage() {
   const [marcas, setMarcas] = useState<Marca[]>([]);
   const [calibres, setCalibres] = useState<Calibre[]>([]);
   const [funcionamentos, setFuncionamentos] = useState<Funcionamento[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [form, setForm] = useState<FormArma>(initialForm);
   const [message, setMessage] = useState<{
     type: "ok" | "error";
@@ -116,9 +109,18 @@ export default function CadastrosPage() {
       if (data) setFuncionamentos(data);
     };
 
+    const fetchCategorias = async () => {
+      const { data } = await supabase
+        .from("categorias")
+        .select("id, nome")
+        .order("nome");
+      if (data) setCategorias(data);
+    };
+
     fetchMarcas();
     fetchCalibres();
     fetchFuncionamentos();
+    fetchCategorias();
   }, [authLoading]);
 
   const handleChange = (
@@ -145,7 +147,7 @@ export default function CadastrosPage() {
         .from("armas")
         .insert([
           {
-            categoria: form.categoria || null,
+            categoria_id: form.categoria_id ? parseInt(form.categoria_id) : null,
             nome: form.nome || null,
             preco: form.preco
               ? parseFloat(form.preco.replace(",", "."))
@@ -154,6 +156,7 @@ export default function CadastrosPage() {
             espec_capacidade_tiros: form.espec_capacidade_tiros || null,
             espec_carregadores: form.espec_carregadores || null,
             marca_id: form.marca_id || null,
+            calibres_id: form.calibre_id || null,
             espec_comprimento_cano: form.espec_comprimento_cano || null,
             caracteristica_acabamento:
               form.caracteristica_acabamento || null,
@@ -279,20 +282,20 @@ export default function CadastrosPage() {
               </h2>
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="categoria" className={labelClass}>
+                  <label htmlFor="categoria_id" className={labelClass}>
                     Categoria
                   </label>
                   <select
-                    id="categoria"
-                    name="categoria"
-                    value={form.categoria}
+                    id="categoria_id"
+                    name="categoria_id"
+                    value={form.categoria_id}
                     onChange={handleChange}
                     className={inputClass}
                   >
                     <option value="">Selecione</option>
-                    {CATEGORIAS.map((c) => (
+                    {categorias.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.label}
+                        {c.nome}
                       </option>
                     ))}
                   </select>
