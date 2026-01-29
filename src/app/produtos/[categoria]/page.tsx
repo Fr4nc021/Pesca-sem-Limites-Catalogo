@@ -89,7 +89,7 @@ export default function ProdutosPorCategoriaPage() {
         } else {
           // Buscar marcas e calibres em batch para melhor performance
           const marcaIds = [...new Set((armasData || []).map((a: any) => a.marca_id).filter(Boolean))];
-          const calibreIds = [...new Set((armasData || []).map((a: any) => a.calibre_id).filter(Boolean))];
+          const calibreIds = [...new Set((armasData || []).map((a: any) => a.calibre_id || a.calibres_id).filter(Boolean))];
 
           const [marcasResult, calibresResult] = await Promise.all([
             marcaIds.length > 0
@@ -103,11 +103,14 @@ export default function ProdutosPorCategoriaPage() {
           const marcasMap = new Map((marcasResult.data || []).map((m: any) => [m.id, m.nome]));
           const calibresMap = new Map((calibresResult.data || []).map((c: any) => [c.id, c.nome]));
 
-          const armasFormatadas = (armasData || []).map((arma: any) => ({
-            ...arma,
-            marca: arma.marca_id && marcasMap.has(arma.marca_id) ? { nome: marcasMap.get(arma.marca_id) } : null,
-            calibre: arma.calibre_id && calibresMap.has(arma.calibre_id) ? { nome: calibresMap.get(arma.calibre_id) } : null,
-          }));
+          const armasFormatadas = (armasData || []).map((arma: any) => {
+            const calibreId = arma.calibre_id || arma.calibres_id;
+            return {
+              ...arma,
+              marca: arma.marca_id && marcasMap.has(arma.marca_id) ? { nome: marcasMap.get(arma.marca_id) } : null,
+              calibre: calibreId && calibresMap.has(calibreId) ? { nome: calibresMap.get(calibreId) } : null,
+            };
+          });
           setArmas(armasFormatadas);
         }
       } catch (err: any) {
@@ -218,6 +221,7 @@ export default function ProdutosPorCategoriaPage() {
               <div
                 key={arma.id}
                 className="group cursor-pointer rounded-lg border border-zinc-700 bg-zinc-900/40 p-4 text-white transition-all hover:border-zinc-600"
+                onClick={() => router.push(`/produto/${arma.id}`)}
               >
                 {arma.foto_url && (
                   <div className="mb-3 h-48 w-full overflow-hidden rounded">
