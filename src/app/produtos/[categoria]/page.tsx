@@ -18,6 +18,7 @@ type Arma = {
   calibres_id: string | null;
   marca: { nome: string } | null;
   calibre: { nome: string } | null;
+  primeiraFoto?: string | null; // Primeira foto da tabela fotos_armas
 };
 
 type Marca = {
@@ -145,6 +146,28 @@ export default function ProdutosPorCategoriaPage() {
           console.error("Erro ao buscar produtos:", armasError);
           setError(`Erro ao carregar produtos: ${armasError.message}`);
         } else {
+          // Buscar IDs das armas
+          const armaIds = (armasData || []).map((a: any) => a.id);
+          
+          // Buscar primeira foto de cada arma (ordem 0 ou menor ordem disponível)
+          let fotosMap = new Map<string, string>();
+          if (armaIds.length > 0) {
+            const { data: fotosData } = await supabase
+              .from("fotos_armas")
+              .select("arma_id, foto_url, ordem")
+              .in("arma_id", armaIds)
+              .order("ordem", { ascending: true });
+
+            if (fotosData) {
+              fotosData.forEach((foto: any) => {
+                // Pegar apenas a primeira foto (menor ordem) de cada arma
+                if (!fotosMap.has(foto.arma_id)) {
+                  fotosMap.set(foto.arma_id, foto.foto_url);
+                }
+              });
+            }
+          }
+
           // Buscar marcas e calibres em batch para melhor performance
           const marcaIds = [...new Set((armasData || []).map((a: any) => a.marca_id).filter(Boolean))];
           const calibreIds = [...new Set((armasData || []).map((a: any) => a.calibre_id || a.calibres_id).filter(Boolean))];
@@ -167,6 +190,7 @@ export default function ProdutosPorCategoriaPage() {
               ...arma,
               marca: arma.marca_id && marcasMap.has(arma.marca_id) ? { nome: marcasMap.get(arma.marca_id) } : null,
               calibre: calibreId && calibresMap.has(calibreId) ? { nome: calibresMap.get(calibreId) } : null,
+              primeiraFoto: fotosMap.get(arma.id) || arma.foto_url || null, // Usar primeira foto da tabela fotos_armas, ou fallback para foto_url
             };
           });
           setArmas(armasFormatadas);
@@ -384,10 +408,10 @@ export default function ProdutosPorCategoriaPage() {
                 className="group cursor-pointer rounded-lg border border-zinc-700 bg-zinc-900/40 p-4 text-white transition-all hover:border-zinc-600"
                 onClick={() => router.push(`/produto/${arma.id}`)}
               >
-                {arma.foto_url && (
+                {(arma.primeiraFoto || arma.foto_url) && (
                   <div className="mb-3 h-48 w-full overflow-hidden rounded">
                     <img
-                      src={arma.foto_url}
+                      src={arma.primeiraFoto || arma.foto_url || ""}
                       alt={arma.nome}
                       className="h-full w-full object-cover"
                     />

@@ -22,6 +22,12 @@ type Arma = {
   categoria: { nome: string } | null;
 };
 
+type FotoArma = {
+  id: string;
+  foto_url: string;
+  ordem: number;
+};
+
 export default function ProdutoPage() {
   const router = useRouter();
   const params = useParams();
@@ -30,6 +36,8 @@ export default function ProdutoPage() {
   const [loading, setLoading] = useState(true);
   const { authLoading } = useAuth();
   const [produto, setProduto] = useState<Arma | null>(null);
+  const [fotos, setFotos] = useState<FotoArma[]>([]);
+  const [fotoAtualIndex, setFotoAtualIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showParcelamento, setShowParcelamento] = useState(false);
 
@@ -50,6 +58,34 @@ export default function ProdutoPage() {
           setLoading(false);
           return;
         }
+
+        // Buscar fotos do produto ordenadas por ordem
+        const { data: fotosData, error: fotosError } = await supabase
+          .from("fotos_armas")
+          .select("id, foto_url, ordem")
+          .eq("arma_id", produtoId)
+          .order("ordem", { ascending: true });
+
+        if (fotosError) {
+          console.warn("Erro ao buscar fotos:", fotosError);
+        }
+
+        // Se não houver fotos na tabela fotos_armas, usar foto_url como fallback
+        const fotosFormatadas: FotoArma[] = fotosData && fotosData.length > 0
+          ? fotosData.map((foto: any) => ({
+              id: foto.id,
+              foto_url: foto.foto_url,
+              ordem: foto.ordem,
+            }))
+          : produtoData.foto_url
+          ? [{
+              id: 'fallback',
+              foto_url: produtoData.foto_url,
+              ordem: 0,
+            }]
+          : [];
+
+        setFotos(fotosFormatadas);
 
         // Buscar dados relacionados
         const [marcaResult, calibreResult, funcionamentoResult, categoriaResult] = await Promise.all([
@@ -98,6 +134,13 @@ export default function ProdutoPage() {
 
     fetchProduto();
   }, [authLoading, produtoId]);
+
+  // Resetar índice da foto quando as fotos mudarem
+  useEffect(() => {
+    if (fotos.length > 0) {
+      setFotoAtualIndex(0);
+    }
+  }, [fotos.length]);
 
   if (authLoading || loading) {
     return (
@@ -164,6 +207,20 @@ export default function ProdutoPage() {
     return parcelas;
   };
 
+  const fotoAtual = fotos[fotoAtualIndex] || null;
+
+  const proximaFoto = () => {
+    if (fotos.length > 0) {
+      setFotoAtualIndex((prev) => (prev + 1) % fotos.length);
+    }
+  };
+
+  const fotoAnterior = () => {
+    if (fotos.length > 0) {
+      setFotoAtualIndex((prev) => (prev - 1 + fotos.length) % fotos.length);
+    }
+  };
+
   return (
     <div
       className="flex min-h-screen flex-col"
@@ -176,13 +233,86 @@ export default function ProdutoPage() {
           <div className="mb-8 grid gap-8 md:grid-cols-2">
             {/* Imagem do Produto */}
             <div className="relative">
-              {produto.foto_url ? (
+              {fotoAtual ? (
                 <div className="relative overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900/40">
                   <img
-                    src={produto.foto_url}
+                    src={fotoAtual.foto_url}
                     alt={produto.nome}
                     className="h-full w-full object-cover"
                   />
+                  
+                  {/* Navegação de fotos - só mostrar se houver mais de uma foto */}
+                  {fotos.length > 1 && (
+                    <>
+                      {/* Botão anterior */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fotoAnterior();
+                        }}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white transition-all hover:bg-black/70"
+                        aria-label="Foto anterior"
+                      >
+                        <svg
+                          className="h-6 w-6"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M15 19l-7-7 7-7"
+                          />
+                        </svg>
+                      </button>
+
+                      {/* Botão próximo */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          proximaFoto();
+                        }}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white transition-all hover:bg-black/70"
+                        aria-label="Próxima foto"
+                      >
+                        <svg
+                          className="h-6 w-6"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                      </button>
+
+                      {/* Indicador de foto atual */}
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                        {fotos.map((_, index) => (
+                          <button
+                            key={index}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFotoAtualIndex(index);
+                            }}
+                            className={`h-2 rounded-full transition-all ${
+                              index === fotoAtualIndex
+                                ? "w-8 bg-[#E9B20E]"
+                                : "w-2 bg-white/50 hover:bg-white/70"
+                            }`}
+                            aria-label={`Ir para foto ${index + 1}`}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  
                   {/* Badge Destaque (opcional) */}
                   <div className="absolute left-4 top-4 rounded-full bg-[#E9B20E] px-3 py-1">
                     <span className="text-xs font-bold text-zinc-900">Destaque</span>

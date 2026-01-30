@@ -11,6 +11,12 @@ type Calibre = { id: string; nome: string };
 type Funcionamento = { id: string; nome: string };
 type Categoria = { id: number; nome: string };
 
+type FotoArma = {
+  id: string;
+  foto_url: string;
+  ordem: number;
+};
+
 type Arma = {
   id: string;
   categoria_id: number | null;
@@ -28,6 +34,7 @@ type Arma = {
   calibre?: { nome: string } | null;
   funcionamento?: { nome: string } | null;
   categoria?: { nome: string } | null;
+  fotos?: FotoArma[];
 };
 
 type FormArma = {
@@ -78,7 +85,10 @@ export default function CadastrosPage() {
     type: "ok" | "error";
     text: string;
   } | null>(null);
-  const [fotoFile, setFotoFile] = useState<File | null>(null);
+  const [fotoFiles, setFotoFiles] = useState<File[]>([]);
+  const [fotoPreviews, setFotoPreviews] = useState<string[]>([]);
+  const [fotosExistentes, setFotosExistentes] = useState<FotoArma[]>([]);
+  const [fotosParaRemover, setFotosParaRemover] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -134,6 +144,37 @@ export default function CadastrosPage() {
 
       if (error) throw error;
 
+      // Buscar todas as fotos das armas
+      const armaIds = (armasData || []).map((a: any) => a.id);
+      
+      let fotosMap = new Map<string, FotoArma[]>();
+      
+      // Só buscar fotos se houver armas e se a tabela existir
+      if (armaIds.length > 0) {
+        const { data: fotosData, error: fotosError } = await supabase
+          .from("fotos_armas")
+          .select("*")
+          .in("arma_id", armaIds)
+          .order("ordem");
+
+        // Se a tabela não existir, apenas logar o erro mas continuar
+        if (fotosError) {
+          console.warn("Erro ao buscar fotos (tabela pode não existir ainda):", fotosError);
+          // Continuar sem fotos se a tabela não existir
+        } else if (fotosData) {
+          fotosData.forEach((foto: any) => {
+            if (!fotosMap.has(foto.arma_id)) {
+              fotosMap.set(foto.arma_id, []);
+            }
+            fotosMap.get(foto.arma_id)!.push({
+              id: foto.id,
+              foto_url: foto.foto_url,
+              ordem: foto.ordem,
+            });
+          });
+        }
+      }
+
       // Buscar dados relacionados
       const marcaIds = [...new Set((armasData || []).map((a: any) => a.marca_id).filter(Boolean))];
       const calibreIds = [...new Set((armasData || []).map((a: any) => a.calibre_id || a.calibres_id).filter(Boolean))];
@@ -168,6 +209,7 @@ export default function CadastrosPage() {
           calibre: calibreId && calibresMap.has(calibreId) ? { nome: calibresMap.get(calibreId) } : null,
           funcionamento: arma.funcionamento_id && funcionamentosMap.has(arma.funcionamento_id) ? { nome: funcionamentosMap.get(arma.funcionamento_id) } : null,
           categoria: arma.categoria_id && categoriasMap.has(arma.categoria_id) ? { nome: categoriasMap.get(arma.categoria_id) } : null,
+          fotos: fotosMap.get(arma.id) || [],
         };
       });
 
@@ -190,9 +232,33 @@ export default function CadastrosPage() {
   };
 
   const handleFotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null;
-    setFotoFile(file);
+    const files = Array.from(e.target.files || []);
+    
+    if (files.length > 0) {
+      setFotoFiles(files);
+      
+      // Criar previews das imagens
+      const previews = files.map(file => URL.createObjectURL(file));
+      setFotoPreviews(previews);
+    }
+    
     setMessage(null);
+  };
+
+  const removeFoto = (index: number) => {
+    const newFiles = fotoFiles.filter((_, i) => i !== index);
+    const newPreviews = fotoPreviews.filter((_, i) => i !== index);
+    
+    // Revogar URL do preview removido
+    URL.revokeObjectURL(fotoPreviews[index]);
+    
+    setFotoFiles(newFiles);
+    setFotoPreviews(newPreviews);
+  };
+
+  const removeFotoExistente = (fotoId: string) => {
+    setFotosParaRemover([...fotosParaRemover, fotoId]);
+    setFotosExistentes(fotosExistentes.filter(f => f.id !== fotoId));
   };
 
   const openEditModal = (arma: Arma) => {
@@ -209,22 +275,34 @@ export default function CadastrosPage() {
       espec_comprimento_cano: arma.espec_comprimento_cano || "",
       caracteristica_acabamento: arma.caracteristica_acabamento || "",
     });
-    setFotoFile(null);
+    setFotoFiles([]);
+    setFotoPreviews([]);
+    setFotosExistentes(arma.fotos || []);
+    setFotosParaRemover([]);
     setShowModal(true);
   };
 
   const openNewModal = () => {
     setEditingId(null);
     setForm(initialForm);
-    setFotoFile(null);
+    setFotoFiles([]);
+    setFotoPreviews([]);
+    setFotosExistentes([]);
+    setFotosParaRemover([]);
     setShowModal(true);
   };
 
   const closeModal = () => {
+    // Limpar previews ao fechar modal
+    fotoPreviews.forEach(preview => URL.revokeObjectURL(preview));
+    
     setShowModal(false);
     setEditingId(null);
     setForm(initialForm);
-    setFotoFile(null);
+    setFotoFiles([]);
+    setFotoPreviews([]);
+    setFotosExistentes([]);
+    setFotosParaRemover([]);
     setMessage(null);
   };
 
@@ -260,30 +338,124 @@ export default function CadastrosPage() {
 
         if (updateError) throw updateError;
 
-        // Se tiver nova foto, fazer upload
-        if (fotoFile) {
-          const fileExt = fotoFile.name.split(".").pop();
-          const filePath = `armas/${editingId}-${Date.now()}.${fileExt}`;
+        // Remover fotos marcadas para remoção
+        if (fotosParaRemover.length > 0) {
+          try {
+            // Buscar URLs das fotos para deletar do storage
+            const { data: fotosParaDeletar, error: fetchError } = await supabase
+              .from("fotos_armas")
+              .select("foto_url")
+              .in("id", fotosParaRemover);
 
-          const { error: uploadError } = await supabase.storage
-            .from("fotos-armas")
-            .upload(filePath, fotoFile, {
-              cacheControl: "3600",
-              upsert: true,
+            // Deletar do storage
+            if (!fetchError && fotosParaDeletar) {
+              const pathsToDelete = fotosParaDeletar.map((foto: any) => {
+                if (foto.foto_url && foto.foto_url.includes("/fotos-armas/")) {
+                  const pathIndex = foto.foto_url.indexOf("/fotos-armas/") + "/fotos-armas/".length;
+                  return foto.foto_url.substring(pathIndex);
+                }
+                return null;
+              }).filter(Boolean);
+
+              if (pathsToDelete.length > 0) {
+                await supabase.storage
+                  .from("fotos-armas")
+                  .remove(pathsToDelete);
+              }
+            }
+
+            // Deletar do banco
+            const { error: deleteFotosError } = await supabase
+              .from("fotos_armas")
+              .delete()
+              .in("id", fotosParaRemover);
+
+            if (deleteFotosError) {
+              console.warn("Erro ao remover fotos do banco:", deleteFotosError);
+              // Não falhar se a tabela não existir
+              if (deleteFotosError.code !== "PGRST116" && deleteFotosError.code !== "42P01") {
+                throw new Error("Erro ao remover fotos");
+              }
+            }
+          } catch (err: any) {
+            console.warn("Erro ao remover fotos (tabela pode não existir):", err);
+            // Continuar mesmo se não conseguir remover
+          }
+        }
+
+        // Fazer upload de novas fotos
+        if (fotoFiles.length > 0) {
+          // Buscar a maior ordem atual para continuar a numeração
+          let ordemInicial = 0;
+          
+          try {
+            const { data: fotosAtuais, error: fotosError } = await supabase
+              .from("fotos_armas")
+              .select("ordem")
+              .eq("arma_id", editingId)
+              .order("ordem", { ascending: false })
+              .limit(1);
+
+            if (!fotosError && fotosAtuais && fotosAtuais.length > 0) {
+              ordemInicial = (fotosAtuais[0] as any).ordem + 1;
+            }
+          } catch (err) {
+            console.warn("Erro ao buscar ordem das fotos (tabela pode não existir):", err);
+            ordemInicial = 0;
+          }
+
+          const uploadPromises = fotoFiles.map(async (file, index) => {
+            const fileExt = file.name.split(".").pop();
+            const filePath = `armas/${editingId}-${Date.now()}-${index}.${fileExt}`;
+
+            const { error: uploadError } = await supabase.storage
+              .from("fotos-armas")
+              .upload(filePath, file, {
+                cacheControl: "3600",
+                upsert: true,
+              });
+
+            if (uploadError) {
+              console.error("Erro no upload:", uploadError);
+              throw new Error(`Erro ao fazer upload da foto ${index + 1}: ${uploadError.message}`);
+            }
+
+            const { data: publicUrlData } = supabase.storage
+              .from("fotos-armas")
+              .getPublicUrl(filePath);
+
+            console.log("URL pública gerada:", publicUrlData.publicUrl);
+            console.log("Inserindo foto na tabela fotos_armas:", {
+              arma_id: editingId,
+              foto_url: publicUrlData.publicUrl,
+              ordem: ordemInicial + index,
             });
 
-          if (uploadError) throw new Error("Erro ao fazer upload da foto");
+            // Inserir na tabela fotos_armas
+            const { data: insertedFoto, error: insertFotoError } = await supabase
+              .from("fotos_armas")
+              .insert({
+                arma_id: editingId,
+                foto_url: publicUrlData.publicUrl,
+                ordem: ordemInicial + index,
+              })
+              .select();
 
-          const { data: publicUrlData } = supabase.storage
-            .from("fotos-armas")
-            .getPublicUrl(filePath);
+            if (insertFotoError) {
+              console.error("Erro ao inserir foto:", insertFotoError);
+              console.error("Detalhes do erro:", {
+                code: insertFotoError.code,
+                message: insertFotoError.message,
+                details: insertFotoError.details,
+                hint: insertFotoError.hint,
+              });
+              throw new Error(`Erro ao salvar URL da foto ${index + 1}: ${insertFotoError.message || insertFotoError.code || "Erro desconhecido"}`);
+            }
 
-          const { error: updateFotoError } = await supabase
-            .from("armas")
-            .update({ foto_url: publicUrlData.publicUrl })
-            .eq("id", editingId);
+            console.log("Foto inserida com sucesso:", insertedFoto);
+          });
 
-          if (updateFotoError) throw new Error("Erro ao salvar URL da foto");
+          await Promise.all(uploadPromises);
         }
 
         setMessage({ type: "ok", text: "Arma atualizada com sucesso." });
@@ -314,29 +486,60 @@ export default function CadastrosPage() {
 
         const armaId = insertData.id as string;
 
-        if (fotoFile) {
-          const fileExt = fotoFile.name.split(".").pop();
-          const filePath = `armas/${armaId}-${Date.now()}.${fileExt}`;
+        // Fazer upload de todas as fotos
+        if (fotoFiles.length > 0) {
+          const uploadPromises = fotoFiles.map(async (file, index) => {
+            const fileExt = file.name.split(".").pop();
+            const filePath = `armas/${armaId}-${Date.now()}-${index}.${fileExt}`;
 
-          const { error: uploadError } = await supabase.storage
-            .from("fotos-armas")
-            .upload(filePath, fotoFile, {
-              cacheControl: "3600",
-              upsert: true,
+            const { error: uploadError } = await supabase.storage
+              .from("fotos-armas")
+              .upload(filePath, file, {
+                cacheControl: "3600",
+                upsert: true,
+              });
+
+            if (uploadError) {
+              console.error("Erro no upload:", uploadError);
+              throw new Error(`Erro ao fazer upload da foto ${index + 1}: ${uploadError.message}`);
+            }
+
+            const { data: publicUrlData } = supabase.storage
+              .from("fotos-armas")
+              .getPublicUrl(filePath);
+
+            console.log("URL pública gerada:", publicUrlData.publicUrl);
+            console.log("Inserindo foto na tabela fotos_armas:", {
+              arma_id: armaId,
+              foto_url: publicUrlData.publicUrl,
+              ordem: index,
             });
 
-          if (uploadError) throw new Error("Erro ao fazer upload da foto");
+            // Inserir na tabela fotos_armas
+            const { data: insertedFoto, error: insertFotoError } = await supabase
+              .from("fotos_armas")
+              .insert({
+                arma_id: armaId,
+                foto_url: publicUrlData.publicUrl,
+                ordem: index,
+              })
+              .select();
 
-          const { data: publicUrlData } = supabase.storage
-            .from("fotos-armas")
-            .getPublicUrl(filePath);
+            if (insertFotoError) {
+              console.error("Erro ao inserir foto:", insertFotoError);
+              console.error("Detalhes do erro:", {
+                code: insertFotoError.code,
+                message: insertFotoError.message,
+                details: insertFotoError.details,
+                hint: insertFotoError.hint,
+              });
+              throw new Error(`Erro ao salvar URL da foto ${index + 1}: ${insertFotoError.message || insertFotoError.code || "Erro desconhecido"}`);
+            }
 
-          const { error: updateError } = await supabase
-            .from("armas")
-            .update({ foto_url: publicUrlData.publicUrl })
-            .eq("id", armaId);
+            console.log("Foto inserida com sucesso:", insertedFoto);
+          });
 
-          if (updateError) throw new Error("Erro ao salvar URL da foto");
+          await Promise.all(uploadPromises);
         }
 
         setMessage({ type: "ok", text: "Arma cadastrada com sucesso." });
@@ -360,50 +563,45 @@ export default function CadastrosPage() {
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
-      // Primeiro, buscar a arma para pegar a URL da foto
-      const { data: armaData, error: fetchError } = await supabase
-        .from("armas")
-        .select("foto_url")
-        .eq("id", id)
-        .single();
+      // Buscar todas as fotos da arma
+      try {
+        const { data: fotosData, error: fotosError } = await supabase
+          .from("fotos_armas")
+          .select("foto_url")
+          .eq("arma_id", id);
 
-      if (fetchError && fetchError.code !== "PGRST116") {
-        throw fetchError;
-      }
+        // Deletar fotos do storage
+        if (!fotosError && fotosData && fotosData.length > 0) {
+          try {
+            const pathsToDelete = fotosData.map((foto: any) => {
+              if (foto.foto_url && foto.foto_url.includes("/fotos-armas/")) {
+                const pathIndex = foto.foto_url.indexOf("/fotos-armas/") + "/fotos-armas/".length;
+                return foto.foto_url.substring(pathIndex);
+              }
+              return null;
+            }).filter(Boolean);
 
-      // Se tiver foto, tentar deletar do storage
-      if (armaData?.foto_url) {
-        try {
-          // Extrair o caminho do arquivo da URL do Supabase Storage
-          // A URL geralmente tem o formato: https://[project].supabase.co/storage/v1/object/public/fotos-armas/armas/[filename]
-          let filePath = "";
-          if (armaData.foto_url.includes("/fotos-armas/")) {
-            // Extrair tudo após /fotos-armas/
-            const pathIndex = armaData.foto_url.indexOf("/fotos-armas/") + "/fotos-armas/".length;
-            filePath = armaData.foto_url.substring(pathIndex);
-          } else {
-            // Fallback: tentar extrair o nome do arquivo e assumir que está em "armas/"
-            const urlParts = armaData.foto_url.split("/");
-            const fileName = urlParts[urlParts.length - 1];
-            filePath = `armas/${fileName}`;
+            if (pathsToDelete.length > 0) {
+              const { error: storageError } = await supabase.storage
+                .from("fotos-armas")
+                .remove(pathsToDelete);
+
+              // Não falhar se não conseguir deletar as fotos (pode já ter sido deletadas)
+              if (storageError) {
+                console.warn("Erro ao deletar fotos do storage:", storageError);
+              }
+            }
+          } catch (storageErr) {
+            console.warn("Erro ao deletar fotos:", storageErr);
+            // Continuar mesmo se não conseguir deletar as fotos
           }
-
-          // Tentar deletar a foto do storage
-          const { error: storageError } = await supabase.storage
-            .from("fotos-armas")
-            .remove([filePath]);
-
-          // Não falhar se não conseguir deletar a foto (pode já ter sido deletada)
-          if (storageError) {
-            console.warn("Erro ao deletar foto do storage:", storageError);
-          }
-        } catch (storageErr) {
-          console.warn("Erro ao deletar foto:", storageErr);
-          // Continuar mesmo se não conseguir deletar a foto
         }
+      } catch (err) {
+        console.warn("Erro ao buscar fotos para deletar (tabela pode não existir):", err);
+        // Continuar mesmo se não conseguir buscar fotos
       }
 
-      // Deletar a arma do banco de dados
+      // Deletar a arma do banco de dados (o CASCADE vai deletar as fotos automaticamente)
       const { error: deleteError } = await supabase
         .from("armas")
         .delete()
@@ -533,7 +731,23 @@ export default function CadastrosPage() {
                       className="border-b border-zinc-700/30 transition-colors hover:bg-zinc-800/30"
                     >
                       <td className="px-4 py-3">
-                        {arma.foto_url ? (
+                        {arma.fotos && arma.fotos.length > 0 ? (
+                          <div className="flex gap-1">
+                            {arma.fotos.slice(0, 3).map((foto) => (
+                              <img
+                                key={foto.id}
+                                src={foto.foto_url}
+                                alt={arma.nome || ""}
+                                className="h-16 w-16 rounded object-cover"
+                              />
+                            ))}
+                            {arma.fotos.length > 3 && (
+                              <div className="flex h-16 w-16 items-center justify-center rounded bg-zinc-800 text-xs text-zinc-500">
+                                +{arma.fotos.length - 3}
+                              </div>
+                            )}
+                          </div>
+                        ) : arma.foto_url ? (
                           <img
                             src={arma.foto_url}
                             alt={arma.nome || ""}
@@ -690,16 +904,71 @@ export default function CadastrosPage() {
                   </div>
                   <div>
                     <label htmlFor="foto" className={labelClass}>
-                      Foto da arma {editingId && "(deixe em branco para manter a atual)"}
+                      Fotos da arma {editingId && "(adicione novas fotos)"}
                     </label>
                     <input
                       id="foto"
                       name="foto"
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={handleFotoChange}
                       className={inputClass}
                     />
+                    
+                    {/* Fotos existentes (apenas na edição) */}
+                    {editingId && fotosExistentes.length > 0 && (
+                      <div className="mt-4">
+                        <p className="mb-2 text-sm text-zinc-400">Fotos existentes:</p>
+                        <div className="grid grid-cols-3 gap-4">
+                          {fotosExistentes.map((foto) => (
+                            <div key={foto.id} className="relative">
+                              <img
+                                src={foto.foto_url}
+                                alt={`Foto ${foto.ordem + 1}`}
+                                className="h-24 w-full rounded object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeFotoExistente(foto.id)}
+                                className="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
+                              >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Preview das fotos selecionadas */}
+                    {fotoPreviews.length > 0 && (
+                      <div className="mt-4">
+                        <p className="mb-2 text-sm text-zinc-400">Novas fotos selecionadas:</p>
+                        <div className="grid grid-cols-3 gap-4">
+                          {fotoPreviews.map((preview, index) => (
+                            <div key={index} className="relative">
+                              <img
+                                src={preview}
+                                alt={`Preview ${index + 1}`}
+                                className="h-24 w-full rounded object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeFoto(index)}
+                                className="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
+                              >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label htmlFor="preco" className={labelClass}>
