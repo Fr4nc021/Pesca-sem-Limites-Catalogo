@@ -30,6 +30,7 @@ type Arma = {
   espec_comprimento_cano: string | null;
   caracteristica_acabamento: string | null;
   foto_url: string | null;
+  em_destaque: boolean | null;
   marca?: { nome: string } | null;
   calibre?: { nome: string } | null;
   funcionamento?: { nome: string } | null;
@@ -48,6 +49,7 @@ type FormArma = {
   marca_id: string;
   espec_comprimento_cano: string;
   caracteristica_acabamento: string;
+  em_destaque: boolean;
 };
 
 const initialForm: FormArma = {
@@ -61,6 +63,7 @@ const initialForm: FormArma = {
   marca_id: "",
   espec_comprimento_cano: "",
   caracteristica_acabamento: "",
+  em_destaque: false,
 };
 
 const inputClass =
@@ -91,6 +94,9 @@ export default function CadastrosPage() {
   const [fotosParaRemover, setFotosParaRemover] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [filtroMarca, setFiltroMarca] = useState<string>("");
+  const [filtroCalibre, setFiltroCalibre] = useState<string>("");
+  const [filtroNome, setFiltroNome] = useState<string>("");
 
   useEffect(() => {
     if (authLoading) return;
@@ -227,7 +233,9 @@ export default function CadastrosPage() {
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const target = e.target;
+    const value = target.type === 'checkbox' ? (target as HTMLInputElement).checked : target.value;
+    setForm((prev) => ({ ...prev, [target.name]: value }));
     setMessage(null);
   };
 
@@ -274,6 +282,7 @@ export default function CadastrosPage() {
       marca_id: arma.marca_id || "",
       espec_comprimento_cano: arma.espec_comprimento_cano || "",
       caracteristica_acabamento: arma.caracteristica_acabamento || "",
+      em_destaque: arma.em_destaque || false,
     });
     setFotoFiles([]);
     setFotoPreviews([]);
@@ -329,6 +338,7 @@ export default function CadastrosPage() {
           calibres_id: form.calibre_id || null,
           espec_comprimento_cano: form.espec_comprimento_cano || null,
           caracteristica_acabamento: form.caracteristica_acabamento || null,
+          em_destaque: form.em_destaque || false,
         };
 
         const { error: updateError } = await supabase
@@ -475,6 +485,7 @@ export default function CadastrosPage() {
               calibres_id: form.calibre_id || null,
               espec_comprimento_cano: form.espec_comprimento_cano || null,
               caracteristica_acabamento: form.caracteristica_acabamento || null,
+              em_destaque: form.em_destaque || false,
             },
           ])
           .select("id")
@@ -558,6 +569,20 @@ export default function CadastrosPage() {
     } finally {
       setSubmitLoading(false);
     }
+  };
+
+  // Filtrar armas baseado nos filtros
+  const armasFiltradas = armas.filter((arma) => {
+    const matchMarca = !filtroMarca || arma.marca_id === filtroMarca;
+    const matchCalibre = !filtroCalibre || arma.calibres_id === filtroCalibre;
+    const matchNome = !filtroNome || (arma.nome || "").toLowerCase().includes(filtroNome.toLowerCase());
+    return matchMarca && matchCalibre && matchNome;
+  });
+
+  const limparFiltros = () => {
+    setFiltroMarca("");
+    setFiltroCalibre("");
+    setFiltroNome("");
   };
 
   const handleDelete = async (id: string) => {
@@ -690,11 +715,92 @@ export default function CadastrosPage() {
             </div>
           )}
 
+          {/* Filtros */}
+          <div className="mb-6 rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Filtros</h2>
+              {(filtroMarca || filtroCalibre || filtroNome) && (
+                <button
+                  onClick={limparFiltros}
+                  className="text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div>
+                <label htmlFor="filtro-nome" className={labelClass}>
+                  Nome
+                </label>
+                <input
+                  id="filtro-nome"
+                  type="text"
+                  value={filtroNome}
+                  onChange={(e) => setFiltroNome(e.target.value)}
+                  className={inputClass}
+                  placeholder="Buscar por nome..."
+                />
+              </div>
+              <div>
+                <label htmlFor="filtro-marca" className={labelClass}>
+                  Marca
+                </label>
+                <select
+                  id="filtro-marca"
+                  value={filtroMarca}
+                  onChange={(e) => setFiltroMarca(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Todas as marcas</option>
+                  {marcas.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="filtro-calibre" className={labelClass}>
+                  Calibre
+                </label>
+                <select
+                  id="filtro-calibre"
+                  value={filtroCalibre}
+                  onChange={(e) => setFiltroCalibre(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Todos os calibres</option>
+                  {calibres.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {(filtroMarca || filtroCalibre || filtroNome) && (
+              <div className="mt-3 text-sm text-zinc-400">
+                Mostrando {armasFiltradas.length} de {armas.length} armas
+              </div>
+            )}
+          </div>
+
           {loading ? (
             <div className="text-center text-white">Carregando...</div>
           ) : armas.length === 0 ? (
             <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-8 text-center">
               <p className="text-zinc-400">Nenhuma arma cadastrada ainda.</p>
+            </div>
+          ) : armasFiltradas.length === 0 ? (
+            <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-8 text-center">
+              <p className="text-zinc-400">Nenhuma arma encontrada com os filtros aplicados.</p>
+              <button
+                onClick={limparFiltros}
+                className="mt-4 text-[#E9B20E] hover:underline"
+              >
+                Limpar filtros
+              </button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -720,12 +826,15 @@ export default function CadastrosPage() {
                       Preço
                     </th>
                     <th className="px-4 py-3 text-center text-sm font-semibold text-zinc-300">
+                      Destaque
+                    </th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold text-zinc-300">
                       Ações
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {armas.map((arma) => (
+                  {armasFiltradas.map((arma) => (
                     <tr
                       key={arma.id}
                       className="border-b border-zinc-700/30 transition-colors hover:bg-zinc-800/30"
@@ -776,6 +885,23 @@ export default function CadastrosPage() {
                               maximumFractionDigits: 2,
                             })}`
                           : "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center">
+                          {arma.em_destaque ? (
+                            <span
+                              className="rounded-full px-2 py-1 text-xs font-medium"
+                              style={{
+                                backgroundColor: "rgba(233, 178, 14, 0.2)",
+                                color: "#E9B20E",
+                              }}
+                            >
+                              ★ Destaque
+                            </span>
+                          ) : (
+                            <span className="text-xs text-zinc-500">-</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
@@ -983,6 +1109,19 @@ export default function CadastrosPage() {
                       className={inputClass}
                       placeholder="0,00"
                     />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="em_destaque"
+                      name="em_destaque"
+                      type="checkbox"
+                      checked={form.em_destaque}
+                      onChange={handleChange}
+                      className="h-5 w-5 rounded border-zinc-600 bg-zinc-800/50 text-[#E9B20E] focus:ring-1 focus:ring-[#E9B20E]"
+                    />
+                    <label htmlFor="em_destaque" className="text-sm font-medium text-zinc-300 cursor-pointer">
+                      Marcar como destaque
+                    </label>
                   </div>
                 </div>
               </section>

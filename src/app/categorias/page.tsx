@@ -5,14 +5,13 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Header from "../../components/Header";
 import { supabase } from "../../lib/supabaseClient";
-import { useAuth } from "../../hooks/useAuth";
 
 type Categoria = {
   id: number;
   nome: string;
 };
 
-// Mapeamento de nomes para ícones
+// Mapeamento de nomes de categorias para ícones
 const ICON_MAP: Record<string, string> = {
   "Pistolas": "/icons/pistola.png",
   "Revólveres": "/icons/revolver.png",
@@ -22,29 +21,68 @@ const ICON_MAP: Record<string, string> = {
   "Fuzil": "/icons/fuzil.png",
 };
 
+// Mapeamento de nomes para textos personalizados dos botões
+const TEXT_MAP: Record<string, string> = {
+  "Pistolas": "Pistola",
+  "Revólveres": "Revolver",
+  "Espingarda_Semi": "Espingarda SemiAuto",
+  "Espingarda_Rep": "Espingarda de Repetição",
+  "Carabinas": "Carabina",
+  "Fuzil": "Fuzil",
+};
+
 export default function CategoriasPage() {
   const router = useRouter();
-  const { authLoading } = useAuth();
+  const [loading, setLoading] = useState(true);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
   useEffect(() => {
-    if (authLoading) return;
+    const checkAuth = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    // Buscar categorias do banco
-    const fetchCategorias = async () => {
-      const { data } = await supabase
-        .from("categorias")
-        .select("id, nome")
-        .order("nome");
-      if (data) {
-        setCategorias(data);
+      if (!session) {
+        router.push("/login");
+        return;
       }
+
+      // Buscar categorias do banco
+      const fetchCategorias = async () => {
+        const { data, error } = await supabase
+          .from("categorias")
+          .select("id, nome")
+          .order("nome");
+
+        if (error) {
+          console.error("Erro ao buscar categorias:", error);
+        } else if (data) {
+          setCategorias(data);
+        }
+        setLoading(false);
+      };
+
+      fetchCategorias();
     };
 
-    fetchCategorias();
-  }, [authLoading]);
+    checkAuth();
 
-  if (authLoading) {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        router.push("/login");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [router]);
+
+  const handleCategoriaClick = (categoriaId: number) => {
+    router.push(`/produtos/${categoriaId}`);
+  };
+
+  if (loading) {
     return (
       <div
         className="flex min-h-screen items-center justify-center"
@@ -64,35 +102,6 @@ export default function CategoriasPage() {
 
       <main className="flex-1 px-4 py-8 md:px-6">
         <div className="container mx-auto max-w-4xl">
-          {/* Botão Voltar */}
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="mb-6 flex items-center gap-2 rounded-lg border-2 px-4 py-2.5 font-medium transition-colors"
-            style={{ borderColor: "#E9B20E", color: "#E9B20E", backgroundColor: "transparent" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "rgba(233, 178, 14, 0.1)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            <svg
-              className="h-5 w-5 shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M10 19l-7-7m0 0l7-7m-7 7h18"
-              />
-            </svg>
-            Voltar
-          </button>
-
           {/* Título da seção */}
           <div className="mb-8 flex items-center gap-3">
             <svg
@@ -114,30 +123,36 @@ export default function CategoriasPage() {
           </div>
 
           {/* Grid de categorias */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {categorias.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                className="flex items-center gap-4 rounded-xl px-5 py-4 text-left transition-opacity hover:opacity-95"
-                style={{ backgroundColor: "#E9B20E" }}
-                onClick={() => router.push(`/produtos/${cat.id}`)}
-              >
-                {ICON_MAP[cat.nome] && (
-                  <Image
-                    src={ICON_MAP[cat.nome]}
-                    alt={cat.nome}
-                    width={40}
-                    height={40}
-                    className="h-10 w-10 shrink-0 object-contain"
-                  />
-                )}
-                <span className="text-base font-medium text-zinc-900">
-                  {cat.nome}
-                </span>
-              </button>
-            ))}
-          </div>
+          {categorias.length === 0 ? (
+            <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-8 text-center">
+              <p className="text-zinc-400">Nenhuma categoria encontrada.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {categorias.map((categoria) => (
+                <button
+                  key={categoria.id}
+                  type="button"
+                  onClick={() => handleCategoriaClick(categoria.id)}
+                  className="flex items-center gap-4 rounded-xl px-5 py-4 text-left transition-opacity hover:opacity-95"
+                  style={{ backgroundColor: "#E9B20E" }}
+                >
+                  {ICON_MAP[categoria.nome] && (
+                    <Image
+                      src={ICON_MAP[categoria.nome]}
+                      alt={categoria.nome}
+                      width={40}
+                      height={40}
+                      className="h-10 w-10 shrink-0 object-contain"
+                    />
+                  )}
+                  <span className="text-base font-medium text-zinc-900">
+                    {TEXT_MAP[categoria.nome] || categoria.nome}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </div>

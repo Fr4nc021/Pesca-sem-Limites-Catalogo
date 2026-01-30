@@ -125,22 +125,30 @@ export default function ProdutosPorCategoriaPage() {
 
     const fetchData = async () => {
       try {
+        setLoading(true);
+        setError(null);
+
         // Buscar o nome da categoria primeiro
-        const { data: categoriaData } = await supabase
+        const { data: categoriaData, error: categoriaError } = await supabase
           .from("categorias")
           .select("nome")
           .eq("id", categoriaId)
           .single();
 
-        if (categoriaData) {
-          setNomeCategoria(categoriaData.nome);
+        if (categoriaError || !categoriaData) {
+          setError("Categoria não encontrada.");
+          setLoading(false);
+          return;
         }
+
+        setNomeCategoria(categoriaData.nome);
 
         // Buscar produtos filtrados por categoria_id
         const { data: armasData, error: armasError } = await supabase
           .from("armas")
           .select("*")
-          .eq("categoria_id", categoriaId);
+          .eq("categoria_id", categoriaId)
+          .order("nome");
 
         if (armasError) {
           console.error("Erro ao buscar produtos:", armasError);
@@ -398,7 +406,21 @@ export default function ProdutosPorCategoriaPage() {
           </div>
 
           {(!armasFiltradas || armasFiltradas.length === 0) && (
-            <p className="text-zinc-300">Nenhum produto encontrado para essa categoria.</p>
+            <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-8 text-center">
+              <p className="text-zinc-300 mb-2">
+                {marcaSelecionada || calibreSelecionado
+                  ? "Nenhum produto encontrado com os filtros aplicados."
+                  : "Nenhum produto encontrado para essa categoria."}
+              </p>
+              {(marcaSelecionada || calibreSelecionado) && (
+                <button
+                  onClick={limparFiltros}
+                  className="mt-4 text-[#E9B20E] hover:underline"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

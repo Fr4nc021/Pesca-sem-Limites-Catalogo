@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Header from "../../../components/Header";
 import { supabase } from "../../../lib/supabaseClient";
 import { useAuth } from "../../../hooks/useAuth";
+import { exportProductToPDF, exportProductToImage } from "../../../lib/exportProduct";
 
 type Arma = {
   id: string;
@@ -221,6 +222,52 @@ export default function ProdutoPage() {
     }
   };
 
+  const handleExportPDF = async () => {
+    try {
+      const parcelas = calcularParcelamento();
+      const produtoData = {
+        nome: produto.nome,
+        preco: produto.preco,
+        marca: produto.marca,
+        calibre: produto.calibre,
+        funcionamento: produto.funcionamento,
+        categoria: produto.categoria,
+        espec_capacidade_tiros: produto.espec_capacidade_tiros,
+        espec_carregadores: produto.espec_carregadores,
+        espec_comprimento_cano: produto.espec_comprimento_cano,
+        caracteristica_acabamento: produto.caracteristica_acabamento,
+        foto_url: fotoAtual?.foto_url || produto.foto_url,
+      };
+      await exportProductToPDF(produtoData, parcelas);
+    } catch (error) {
+      console.error("Erro ao exportar PDF:", error);
+      alert("Erro ao gerar PDF. Tente novamente.");
+    }
+  };
+
+  const handleExportImage = async () => {
+    try {
+      const parcelas = calcularParcelamento();
+      const produtoData = {
+        nome: produto.nome,
+        preco: produto.preco,
+        marca: produto.marca,
+        calibre: produto.calibre,
+        funcionamento: produto.funcionamento,
+        categoria: produto.categoria,
+        espec_capacidade_tiros: produto.espec_capacidade_tiros,
+        espec_carregadores: produto.espec_carregadores,
+        espec_comprimento_cano: produto.espec_comprimento_cano,
+        caracteristica_acabamento: produto.caracteristica_acabamento,
+        foto_url: fotoAtual?.foto_url || produto.foto_url,
+      };
+      await exportProductToImage(produtoData, parcelas);
+    } catch (error) {
+      console.error("Erro ao exportar imagem:", error);
+      alert("Erro ao gerar imagem. Tente novamente.");
+    }
+  };
+
   return (
     <div
       className="flex min-h-screen flex-col"
@@ -351,7 +398,7 @@ export default function ProdutoPage() {
               {/* Botões de Ação */}
               <div className="mb-6 flex flex-col gap-4 sm:flex-row">
                 <button
-                  className="flex items-center justify-center gap-2 rounded-lg border-2 px-6 py-3 transition-colors"
+                  className="flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-1.5 text-sm transition-colors"
                   style={{ borderColor: "#E9B20E", backgroundColor: "transparent" }}
                   onMouseEnter={(e) =>
                     (e.currentTarget.style.backgroundColor = "rgba(233, 178, 14, 0.1)")
@@ -362,7 +409,7 @@ export default function ProdutoPage() {
                   onClick={() => setShowParcelamento(true)}
                 >
                   <svg
-                    className="h-5 w-5"
+                    className="h-4 w-4"
                     style={{ color: "#E9B20E" }}
                     fill="none"
                     stroke="currentColor"
@@ -377,6 +424,65 @@ export default function ProdutoPage() {
                   </svg>
                   <span className="font-bold" style={{ color: "#E9B20E" }}>
                     Ver Parcelamento
+                  </span>
+                </button>
+                
+                {/* Botão de Exportar PDF */}
+                <button
+                  className="flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-bold transition-colors"
+                  style={{ backgroundColor: "#E9B20E", color: "#030711" }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.backgroundColor = "#D4A00D")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.backgroundColor = "#E9B20E")
+                  }
+                  onClick={handleExportPDF}
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  Exportar PDF
+                </button>
+                
+                {/* Botão de Exportar Imagem */}
+                <button
+                  className="flex items-center justify-center gap-2 rounded-lg border-2 px-5 py-2.5 text-sm transition-colors"
+                  style={{ borderColor: "#E9B20E", backgroundColor: "transparent" }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.backgroundColor = "rgba(233, 178, 14, 0.1)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.backgroundColor = "transparent")
+                  }
+                  onClick={handleExportImage}
+                >
+                  <svg
+                    className="h-4 w-4"
+                    style={{ color: "#E9B20E" }}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                  <span className="font-bold" style={{ color: "#E9B20E" }}>
+                    Exportar Imagem
                   </span>
                 </button>
               </div>
@@ -492,9 +598,17 @@ export default function ProdutoPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
           onClick={() => setShowParcelamento(false)}
         >
-          <div
-            className="relative w-full max-w-2xl rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-xl"
-            style={{ backgroundColor: "#18181b" }}
+         <div
+            className="relative w-full max-w-2xl rounded-lg p-6"
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              background: 'rgba(31, 41, 55, 0.17)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header do Modal */}
