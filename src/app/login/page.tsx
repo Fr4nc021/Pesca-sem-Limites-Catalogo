@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../src/lib/supabaseClient";
 
@@ -12,6 +12,20 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Ao carregar a página de login, se houver um erro de token guardado, 
+    // tentamos limpar a sessão para evitar erros de refresh token.
+    const clearStaleSession = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) {
+        await supabase.auth.signOut();
+      } else if (session) {
+        router.push("/dashboard");
+      }
+    };
+    clearStaleSession();
+  }, [router]);
 
   async function handleLogin() {
     setError("");

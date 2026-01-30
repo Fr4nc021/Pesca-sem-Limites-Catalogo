@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Header from "../../../components/Header";
 import { supabase } from "../../../lib/supabaseClient";
+import { useAuth } from "../../../hooks/useAuth";
 
 type Arma = {
   id: string;
@@ -12,8 +13,21 @@ type Arma = {
   foto_url: string | null;
   categoria_id: number | null;
   espec_capacidade_tiros: string | null;
+  marca_id: string | null;
+  calibre_id: string | null;
+  calibres_id: string | null;
   marca: { nome: string } | null;
   calibre: { nome: string } | null;
+};
+
+type Marca = {
+  id: string;
+  nome: string;
+};
+
+type Calibre = {
+  id: string;
+  nome: string;
 };
 
 export default function ProdutosPorCategoriaPage() {
@@ -23,36 +37,80 @@ export default function ProdutosPorCategoriaPage() {
   const categoriaId = parseInt(categoria);
 
   const [loading, setLoading] = useState(true);
-  const [authLoading, setAuthLoading] = useState(true);
+  const { authLoading } = useAuth();
   const [armas, setArmas] = useState<Arma[]>([]);
+  const [armasFiltradas, setArmasFiltradas] = useState<Arma[]>([]);
   const [nomeCategoria, setNomeCategoria] = useState<string>(`Categoria ${categoriaId}`);
   const [error, setError] = useState<string | null>(null);
+  
+  // Estados para filtros
+  const [marcas, setMarcas] = useState<Marca[]>([]);
+  const [calibres, setCalibres] = useState<Calibre[]>([]);
+  const [marcaSelecionada, setMarcaSelecionada] = useState<string | null>(null);
+  const [calibreSelecionado, setCalibreSelecionado] = useState<string | null>(null);
+  const [dropdownMarcaAberto, setDropdownMarcaAberto] = useState(false);
+  const [dropdownCalibreAberto, setDropdownCalibreAberto] = useState(false);
+  
+  // Refs para fechar dropdowns ao clicar fora
+  const marcaDropdownRef = useRef<HTMLDivElement>(null);
+  const calibreDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Buscar marcas e calibres disponíveis
   useEffect(() => {
-    const checkAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    if (authLoading) return;
 
-      if (!session) {
-        router.push("/login");
-      } else {
-        setAuthLoading(false);
+    const fetchMarcas = async () => {
+      const { data } = await supabase
+        .from("marcas")
+        .select("id, nome")
+        .order("nome");
+      if (data) setMarcas(data);
+    };
+
+    const fetchCalibres = async () => {
+      const { data } = await supabase
+        .from("calibres")
+        .select("id, nome")
+        .order("nome");
+      if (data) setCalibres(data);
+    };
+
+    fetchMarcas();
+    fetchCalibres();
+  }, [authLoading]);
+
+  // Fechar dropdowns ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (marcaDropdownRef.current && !marcaDropdownRef.current.contains(event.target as Node)) {
+        setDropdownMarcaAberto(false);
+      }
+      if (calibreDropdownRef.current && !calibreDropdownRef.current.contains(event.target as Node)) {
+        setDropdownCalibreAberto(false);
       }
     };
 
-    checkAuth();
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        router.push("/login");
-      }
-    });
+  // Aplicar filtros quando mudarem
+  useEffect(() => {
+    let filtradas = [...armas];
 
-    return () => subscription.unsubscribe();
-  }, [router]);
+    if (marcaSelecionada) {
+      filtradas = filtradas.filter((arma) => arma.marca_id === marcaSelecionada);
+    }
+
+    if (calibreSelecionado) {
+      filtradas = filtradas.filter((arma) => {
+        const calibreId = arma.calibre_id || arma.calibres_id;
+        return calibreId === calibreSelecionado;
+      });
+    }
+
+    setArmasFiltradas(filtradas);
+  }, [armas, marcaSelecionada, calibreSelecionado]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -112,6 +170,7 @@ export default function ProdutosPorCategoriaPage() {
             };
           });
           setArmas(armasFormatadas);
+          setArmasFiltradas(armasFormatadas);
         }
       } catch (err: any) {
         console.error("Erro:", err);
@@ -123,6 +182,21 @@ export default function ProdutosPorCategoriaPage() {
 
     fetchData();
   }, [authLoading, categoriaId]);
+
+  const handleMarcaSelecionada = (marcaId: string | null) => {
+    setMarcaSelecionada(marcaId);
+    setDropdownMarcaAberto(false);
+  };
+
+  const handleCalibreSelecionado = (calibreId: string | null) => {
+    setCalibreSelecionado(calibreId);
+    setDropdownCalibreAberto(false);
+  };
+
+  const limparFiltros = () => {
+    setMarcaSelecionada(null);
+    setCalibreSelecionado(null);
+  };
 
   if (authLoading || loading) {
     return (
@@ -151,6 +225,14 @@ export default function ProdutosPorCategoriaPage() {
     );
   }
 
+  const marcaSelecionadaNome = marcaSelecionada 
+    ? marcas.find(m => m.id === marcaSelecionada)?.nome || "Marca"
+    : "Marca";
+  
+  const calibreSelecionadoNome = calibreSelecionado
+    ? calibres.find(c => c.id === calibreSelecionado)?.nome || "Calibre"
+    : "Calibre";
+
   return (
     <div
       className="flex min-h-screen flex-col"
@@ -165,59 +247,138 @@ export default function ProdutosPorCategoriaPage() {
 
           {/* Seção de Filtros */}
           <div className="mb-6">
-            <p className="mb-3 text-sm text-white">Filtros</p>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm text-white">Filtros</p>
+              {(marcaSelecionada || calibreSelecionado) && (
+                <button
+                  onClick={limparFiltros}
+                  className="text-sm text-zinc-400 hover:text-white transition-colors"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
             <div className="flex gap-3">
-              <button
-                className="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors"
-                style={{ backgroundColor: "#E9B20E" }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#D4A00D")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#E9B20E")}
-              >
-                <span className="text-sm font-bold text-zinc-900">Marca</span>
-                <svg
-                  className="h-4 w-4 text-zinc-900"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
+              {/* Dropdown Marca */}
+              <div className="relative" ref={marcaDropdownRef}>
+                <button
+                  className="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors"
+                  style={{ backgroundColor: "#E9B20E" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#D4A00D")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#E9B20E")}
+                  onClick={() => {
+                    setDropdownMarcaAberto(!dropdownMarcaAberto);
+                    setDropdownCalibreAberto(false);
+                  }}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
-              <button
-                className="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors"
-                style={{ backgroundColor: "#E9B20E" }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#D4A00D")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#E9B20E")}
-              >
-                <span className="text-sm font-bold text-zinc-900">Calibre</span>
-                <svg
-                  className="h-4 w-4 text-zinc-900"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
+                  <span className="text-sm font-bold text-zinc-900">{marcaSelecionadaNome}</span>
+                  <svg
+                    className={`h-4 w-4 text-zinc-900 transition-transform ${dropdownMarcaAberto ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+                {dropdownMarcaAberto && (
+                  <div className="absolute top-full left-0 mt-1 z-50 w-48 rounded-lg border border-zinc-700 bg-zinc-900 shadow-lg max-h-60 overflow-y-auto">
+                    <button
+                      onClick={() => handleMarcaSelecionada(null)}
+                      className={`w-full px-4 py-2 text-left text-sm transition-colors ${
+                        marcaSelecionada === null
+                          ? "bg-zinc-800 text-white"
+                          : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                      }`}
+                    >
+                      Todas as marcas
+                    </button>
+                    {marcas.map((marca) => (
+                      <button
+                        key={marca.id}
+                        onClick={() => handleMarcaSelecionada(marca.id)}
+                        className={`w-full px-4 py-2 text-left text-sm transition-colors ${
+                          marcaSelecionada === marca.id
+                            ? "bg-zinc-800 text-white"
+                            : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                        }`}
+                      >
+                        {marca.nome}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Dropdown Calibre */}
+              <div className="relative" ref={calibreDropdownRef}>
+                <button
+                  className="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors"
+                  style={{ backgroundColor: "#E9B20E" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#D4A00D")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#E9B20E")}
+                  onClick={() => {
+                    setDropdownCalibreAberto(!dropdownCalibreAberto);
+                    setDropdownMarcaAberto(false);
+                  }}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
+                  <span className="text-sm font-bold text-zinc-900">{calibreSelecionadoNome}</span>
+                  <svg
+                    className={`h-4 w-4 text-zinc-900 transition-transform ${dropdownCalibreAberto ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+                {dropdownCalibreAberto && (
+                  <div className="absolute top-full left-0 mt-1 z-50 w-48 rounded-lg border border-zinc-700 bg-zinc-900 shadow-lg max-h-60 overflow-y-auto">
+                    <button
+                      onClick={() => handleCalibreSelecionado(null)}
+                      className={`w-full px-4 py-2 text-left text-sm transition-colors ${
+                        calibreSelecionado === null
+                          ? "bg-zinc-800 text-white"
+                          : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                      }`}
+                    >
+                      Todos os calibres
+                    </button>
+                    {calibres.map((calibre) => (
+                      <button
+                        key={calibre.id}
+                        onClick={() => handleCalibreSelecionado(calibre.id)}
+                        className={`w-full px-4 py-2 text-left text-sm transition-colors ${
+                          calibreSelecionado === calibre.id
+                            ? "bg-zinc-800 text-white"
+                          : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                        }`}
+                      >
+                        {calibre.nome}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {(!armas || armas.length === 0) && (
+          {(!armasFiltradas || armasFiltradas.length === 0) && (
             <p className="text-zinc-300">Nenhum produto encontrado para essa categoria.</p>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {armas?.map((arma) => (
+            {armasFiltradas?.map((arma) => (
               <div
                 key={arma.id}
                 className="group cursor-pointer rounded-lg border border-zinc-700 bg-zinc-900/40 p-4 text-white transition-all hover:border-zinc-600"

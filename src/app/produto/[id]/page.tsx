@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Header from "../../../components/Header";
 import { supabase } from "../../../lib/supabaseClient";
+import { useAuth } from "../../../hooks/useAuth";
 
 type Arma = {
   id: string;
@@ -27,36 +28,10 @@ export default function ProdutoPage() {
   const produtoId = params.id as string;
 
   const [loading, setLoading] = useState(true);
-  const [authLoading, setAuthLoading] = useState(true);
+  const { authLoading } = useAuth();
   const [produto, setProduto] = useState<Arma | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showParcelamento, setShowParcelamento] = useState(false);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.push("/login");
-      } else {
-        setAuthLoading(false);
-      }
-    };
-
-    checkAuth();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        router.push("/login");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [router]);
 
   useEffect(() => {
     if (authLoading || !produtoId) return;

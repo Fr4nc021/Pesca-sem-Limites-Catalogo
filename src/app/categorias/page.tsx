@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Header from "../../components/Header";
 import { supabase } from "../../lib/supabaseClient";
+import { useAuth } from "../../hooks/useAuth";
 
 type Categoria = {
   id: number;
@@ -23,31 +24,11 @@ const ICON_MAP: Record<string, string> = {
 
 export default function CategoriasPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const { authLoading } = useAuth();
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.push("/login");
-      } else {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        router.push("/login");
-      }
-    });
+    if (authLoading) return;
 
     // Buscar categorias do banco
     const fetchCategorias = async () => {
@@ -61,11 +42,9 @@ export default function CategoriasPage() {
     };
 
     fetchCategorias();
+  }, [authLoading]);
 
-    return () => subscription.unsubscribe();
-  }, [router]);
-
-  if (loading) {
+  if (authLoading) {
     return (
       <div
         className="flex min-h-screen items-center justify-center"

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import { supabase } from "../../lib/supabaseClient";
+import { useAuth } from "../../hooks/useAuth";
 
 type Marca = { id: string; nome: string };
 type Calibre = { id: string; nome: string };
@@ -62,7 +63,7 @@ const labelClass = "mb-1.5 block text-sm font-medium text-zinc-300";
 
 export default function CadastrosPage() {
   const router = useRouter();
-  const [authLoading, setAuthLoading] = useState(true);
+  const { authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [marcas, setMarcas] = useState<Marca[]>([]);
@@ -80,32 +81,6 @@ export default function CadastrosPage() {
   const [fotoFile, setFotoFile] = useState<File | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.push("/login");
-      } else {
-        setAuthLoading(false);
-      }
-    };
-
-    checkAuth();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        router.push("/login");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [router]);
 
   useEffect(() => {
     if (authLoading) return;
