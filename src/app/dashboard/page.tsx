@@ -25,6 +25,7 @@ export default function Dashboard() {
   const router = useRouter();
   const { authLoading } = useAuth();
   const [armasDestaque, setArmasDestaque] = useState<ArmaDestaque[]>([]);
+  const [minPrecoPorArma, setMinPrecoPorArma] = useState<Map<string, number>>(new Map());
   const [loadingDestaques, setLoadingDestaques] = useState(true);
 
   useEffect(() => {
@@ -47,13 +48,27 @@ export default function Dashboard() {
 
         if (!armasData || armasData.length === 0) {
           setArmasDestaque([]);
+          setMinPrecoPorArma(new Map());
           setLoadingDestaques(false);
           return;
         }
 
         // Buscar IDs das armas
         const armaIds = armasData.map((a: any) => a.id);
-        
+
+        // Buscar preço mínimo por variação (para "A partir de R$ X")
+        const { data: variacoesData } = await supabase
+          .from("variacoes_armas")
+          .select("arma_id, preco")
+          .in("arma_id", armaIds);
+        const minMap = new Map<string, number>();
+        (variacoesData || []).forEach((v: { arma_id: string; preco: number }) => {
+          const preco = parseFloat(String(v.preco));
+          const current = minMap.get(v.arma_id);
+          if (current == null || preco < current) minMap.set(v.arma_id, preco);
+        });
+        setMinPrecoPorArma(minMap);
+
         // Buscar primeira foto de cada arma
         let fotosMap = new Map<string, string>();
         if (armaIds.length > 0) {
@@ -281,16 +296,22 @@ export default function Dashboard() {
                       )}
                     </div>
 
-                    {/* Preço com seta */}
+                    {/* Preço com seta (mínimo das variações ou preço do produto) */}
                     <div className="flex items-center justify-between">
-                      {arma.preco != null && (
-                        <p className="font-bold text-[#E9B20E]">
-                          R$ {parseFloat(arma.preco.toString()).toLocaleString("pt-BR", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </p>
-                      )}
+                      {(() => {
+                        const minVariacao = minPrecoPorArma.get(arma.id);
+                        const precoExibir = minVariacao != null ? minVariacao : arma.preco;
+                        if (precoExibir == null) return null;
+                        const formatado = parseFloat(precoExibir.toString()).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        });
+                        return (
+                          <p className="font-bold text-[#E9B20E]">
+                            {minVariacao != null ? "A partir de " : ""}R$ {formatado}
+                          </p>
+                        );
+                      })()}
                       <svg
                         className="h-5 w-5 text-zinc-400 transition-transform group-hover:translate-x-1"
                         fill="none"

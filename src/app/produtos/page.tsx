@@ -17,6 +17,7 @@ export default function ProdutosPage() {
   const router = useRouter();
   const { authLoading } = useAuth();
   const [armas, setArmas] = useState<Arma[]>([]);
+  const [minPrecoPorArma, setMinPrecoPorArma] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +37,27 @@ export default function ProdutosPage() {
           return;
         }
 
-        setArmas(data || []);
+        const armasList = data || [];
+        setArmas(armasList);
+
+        if (armasList.length === 0) {
+          setMinPrecoPorArma(new Map());
+          return;
+        }
+
+        const armaIds = armasList.map((a: Arma) => a.id);
+        const { data: variacoesData } = await supabase
+          .from("variacoes_armas")
+          .select("arma_id, preco")
+          .in("arma_id", armaIds);
+
+        const minMap = new Map<string, number>();
+        (variacoesData || []).forEach((v: { arma_id: string; preco: number }) => {
+          const preco = parseFloat(String(v.preco));
+          const current = minMap.get(v.arma_id);
+          if (current == null || preco < current) minMap.set(v.arma_id, preco);
+        });
+        setMinPrecoPorArma(minMap);
       } catch (err: any) {
         setError(err?.message || "Erro ao carregar produtos");
       } finally {
@@ -110,14 +131,20 @@ export default function ProdutosPage() {
                     {arma.nome || "Sem nome"}
                   </h2>
 
-                  {arma.preco != null && (
-                    <p className="font-bold text-[#E9B20E]">
-                      R$ {parseFloat(arma.preco.toString()).toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </p>
-                  )}
+                  {(() => {
+                    const minVariacao = minPrecoPorArma.get(arma.id);
+                    const precoExibir = minVariacao != null ? minVariacao : arma.preco;
+                    if (precoExibir == null) return null;
+                    const formatado = parseFloat(precoExibir.toString()).toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    });
+                    return (
+                      <p className="font-bold text-[#E9B20E]">
+                        {minVariacao != null ? "A partir de " : ""}R$ {formatado}
+                      </p>
+                    );
+                  })()}
                 </div>
               ))}
             </div>

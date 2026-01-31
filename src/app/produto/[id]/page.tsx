@@ -27,6 +27,15 @@ type FotoArma = {
   id: string;
   foto_url: string;
   ordem: number;
+  variacao_id: string | null;
+};
+
+type Variacao = {
+  id: string;
+  calibre_id: string | null;
+  comprimento_cano: string;
+  preco: number;
+  calibre: { nome: string } | null;
 };
 
 export default function ProdutoPage() {
@@ -38,6 +47,8 @@ export default function ProdutoPage() {
   const { authLoading } = useAuth();
   const [produto, setProduto] = useState<Arma | null>(null);
   const [fotos, setFotos] = useState<FotoArma[]>([]);
+  const [variacoes, setVariacoes] = useState<Variacao[]>([]);
+  const [selectedVariacaoId, setSelectedVariacaoId] = useState<string | null>(null);
   const [fotoAtualIndex, setFotoAtualIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showParcelamento, setShowParcelamento] = useState(false);
@@ -60,10 +71,10 @@ export default function ProdutoPage() {
           return;
         }
 
-        // Buscar fotos do produto ordenadas por ordem
+        // Buscar fotos do produto (com variacao_id para filtrar por variação)
         const { data: fotosData, error: fotosError } = await supabase
           .from("fotos_armas")
-          .select("id, foto_url, ordem")
+          .select("id, foto_url, ordem, variacao_id")
           .eq("arma_id", produtoId)
           .order("ordem", { ascending: true });
 
@@ -77,16 +88,53 @@ export default function ProdutoPage() {
               id: foto.id,
               foto_url: foto.foto_url,
               ordem: foto.ordem,
+              variacao_id: foto.variacao_id ?? null,
             }))
           : produtoData.foto_url
           ? [{
               id: 'fallback',
               foto_url: produtoData.foto_url,
               ordem: 0,
+              variacao_id: null,
             }]
           : [];
 
         setFotos(fotosFormatadas);
+
+        // Buscar variações do produto (calibre + cano + preço)
+        const { data: variacoesData, error: variacoesError } = await supabase
+          .from("variacoes_armas")
+          .select("id, calibre_id, comprimento_cano, preco")
+          .eq("arma_id", produtoId)
+          .order("comprimento_cano");
+
+        if (variacoesError) {
+          console.warn("Erro ao buscar variações:", variacoesError);
+        }
+
+        const variacoesList: Variacao[] = [];
+        if (variacoesData && variacoesData.length > 0) {
+          const calibreIds = [...new Set((variacoesData as any[]).map((v: any) => v.calibre_id).filter(Boolean))];
+          const calibresMap = new Map<string, string>();
+          if (calibreIds.length > 0) {
+            const { data: calibresData } = await supabase.from("calibres").select("id, nome").in("id", calibreIds);
+            (calibresData || []).forEach((c: any) => calibresMap.set(c.id, c.nome));
+          }
+          variacoesData.forEach((v: any) => {
+            variacoesList.push({
+              id: v.id,
+              calibre_id: v.calibre_id,
+              comprimento_cano: v.comprimento_cano,
+              preco: parseFloat(v.preco),
+              calibre: v.calibre_id && calibresMap.has(v.calibre_id) ? { nome: calibresMap.get(v.calibre_id)! } : null,
+            });
+          });
+          setVariacoes(variacoesList);
+          setSelectedVariacaoId(variacoesList[0].id);
+        } else {
+          setVariacoes([]);
+          setSelectedVariacaoId(null);
+        }
 
         // Buscar dados relacionados
         const [marcaResult, calibreResult, funcionamentoResult, categoriaResult] = await Promise.all([
@@ -136,12 +184,21 @@ export default function ProdutoPage() {
     fetchProduto();
   }, [authLoading, produtoId]);
 
-  // Resetar índice da foto quando as fotos mudarem
+  // Valores atuais: produto com variação selecionada ou dados do produto
+  const selectedVariacao = variacoes.find((v) => v.id === selectedVariacaoId) ?? null;
+  const precoAtual = selectedVariacao != null ? selectedVariacao.preco : (produto?.preco ?? null);
+  const calibreAtual = selectedVariacao != null ? selectedVariacao.calibre : produto?.calibre ?? null;
+  const comprimentoCanoAtual = selectedVariacao != null ? selectedVariacao.comprimento_cano : (produto?.espec_comprimento_cano ?? null);
+  const fotosAtual =
+    variacoes.length > 0 && selectedVariacaoId
+      ? fotos.filter((f) => f.variacao_id === selectedVariacaoId)
+      : fotos.filter((f) => !f.variacao_id);
+  const fotosExibir = fotosAtual.length > 0 ? fotosAtual : fotos;
+
+  // Resetar índice da foto quando as fotos exibidas ou variação mudarem
   useEffect(() => {
-    if (fotos.length > 0) {
-      setFotoAtualIndex(0);
-    }
-  }, [fotos.length]);
+    setFotoAtualIndex(0);
+  }, [selectedVariacaoId, fotosExibir.length]);
 
   if (authLoading || loading) {
     return (
@@ -179,9 +236,9 @@ export default function ProdutoPage() {
   };
 
   const calcularParcelamento = () => {
-    if (!produto || produto.preco == null) return [];
+    if (precoAtual == null) return [];
 
-    const preco = parseFloat(produto.preco.toString());
+    const preco = parseFloat(precoAtual.toString());
     const parcelas = [];
 
     // 1x a 4x sem juros
@@ -208,17 +265,17 @@ export default function ProdutoPage() {
     return parcelas;
   };
 
-  const fotoAtual = fotos[fotoAtualIndex] || null;
+  const fotoAtual = fotosExibir[fotoAtualIndex] || null;
 
   const proximaFoto = () => {
-    if (fotos.length > 0) {
-      setFotoAtualIndex((prev) => (prev + 1) % fotos.length);
+    if (fotosExibir.length > 0) {
+      setFotoAtualIndex((prev) => (prev + 1) % fotosExibir.length);
     }
   };
 
   const fotoAnterior = () => {
-    if (fotos.length > 0) {
-      setFotoAtualIndex((prev) => (prev - 1 + fotos.length) % fotos.length);
+    if (fotosExibir.length > 0) {
+      setFotoAtualIndex((prev) => (prev - 1 + fotosExibir.length) % fotosExibir.length);
     }
   };
 
@@ -227,14 +284,14 @@ export default function ProdutoPage() {
       const parcelas = calcularParcelamento();
       const produtoData = {
         nome: produto.nome,
-        preco: produto.preco,
+        preco: precoAtual,
         marca: produto.marca,
-        calibre: produto.calibre,
+        calibre: calibreAtual,
         funcionamento: produto.funcionamento,
         categoria: produto.categoria,
         espec_capacidade_tiros: produto.espec_capacidade_tiros,
         espec_carregadores: produto.espec_carregadores,
-        espec_comprimento_cano: produto.espec_comprimento_cano,
+        espec_comprimento_cano: comprimentoCanoAtual ?? produto.espec_comprimento_cano,
         caracteristica_acabamento: produto.caracteristica_acabamento,
         foto_url: fotoAtual?.foto_url || produto.foto_url,
       };
@@ -250,14 +307,14 @@ export default function ProdutoPage() {
       const parcelas = calcularParcelamento();
       const produtoData = {
         nome: produto.nome,
-        preco: produto.preco,
+        preco: precoAtual,
         marca: produto.marca,
-        calibre: produto.calibre,
+        calibre: calibreAtual,
         funcionamento: produto.funcionamento,
         categoria: produto.categoria,
         espec_capacidade_tiros: produto.espec_capacidade_tiros,
         espec_carregadores: produto.espec_carregadores,
-        espec_comprimento_cano: produto.espec_comprimento_cano,
+        espec_comprimento_cano: comprimentoCanoAtual ?? produto.espec_comprimento_cano,
         caracteristica_acabamento: produto.caracteristica_acabamento,
         foto_url: fotoAtual?.foto_url || produto.foto_url,
       };
@@ -289,7 +346,7 @@ export default function ProdutoPage() {
                   />
                   
                   {/* Navegação de fotos - só mostrar se houver mais de uma foto */}
-                  {fotos.length > 1 && (
+                  {fotosExibir.length > 1 && (
                     <>
                       {/* Botão anterior */}
                       <button
@@ -341,7 +398,7 @@ export default function ProdutoPage() {
 
                       {/* Indicador de foto atual */}
                       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                        {fotos.map((_, index) => (
+                        {fotosExibir.map((_, index) => (
                           <button
                             key={index}
                             onClick={(e) => {
@@ -384,11 +441,35 @@ export default function ProdutoPage() {
                 {produto.nome}
               </h1>
 
+              {/* Seletor de variação (calibre + cano) */}
+              {variacoes.length > 0 && (
+                <div className="mb-6">
+                  <p className="mb-2 text-sm text-zinc-400">Escolha a variação</p>
+                  <div className="flex flex-wrap gap-2">
+                    {variacoes.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setSelectedVariacaoId(v.id)}
+                        className="rounded-lg border-2 px-4 py-2 text-sm font-medium transition-colors"
+                        style={{
+                          borderColor: selectedVariacaoId === v.id ? "#E9B20E" : "rgb(63 63 70)",
+                          backgroundColor: selectedVariacaoId === v.id ? "rgba(233, 178, 14, 0.15)" : "transparent",
+                          color: selectedVariacaoId === v.id ? "#E9B20E" : "rgb(161 161 170)",
+                        }}
+                      >
+                        {v.calibre?.nome ?? "—"} • {v.comprimento_cano}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Preço */}
               <div className="mb-6">
                 <p className="mb-1 text-sm text-zinc-400">Valor à vista</p>
                 <p className="text-5xl font-bold" style={{ color: "#E9B20E" }}>
-                  R$ {formatPrice(produto.preco)}
+                  R$ {formatPrice(precoAtual)}
                 </p>
                 <p className="mt-2 text-sm text-zinc-400">
                   ou em até 4x sem juros ou até 10x com juros
@@ -535,10 +616,10 @@ export default function ProdutoPage() {
                   <p className="text-lg font-semibold text-white">{produto.marca.nome}</p>
                 </div>
               )}
-              {produto.calibre && (
+              {calibreAtual && (
                 <div>
                   <p className="text-sm text-zinc-400">Calibre</p>
-                  <p className="text-lg font-semibold text-white">{produto.calibre.nome}</p>
+                  <p className="text-lg font-semibold text-white">{calibreAtual.nome}</p>
                 </div>
               )}
               {produto.funcionamento && (
@@ -565,11 +646,11 @@ export default function ProdutoPage() {
                   </p>
                 </div>
               )}
-              {produto.espec_comprimento_cano && (
+              {comprimentoCanoAtual && (
                 <div>
                   <p className="text-sm text-zinc-400">Comprimento do Cano</p>
                   <p className="text-lg font-semibold text-white">
-                    {produto.espec_comprimento_cano}
+                    {comprimentoCanoAtual}
                   </p>
                 </div>
               )}
@@ -635,11 +716,11 @@ export default function ProdutoPage() {
             </div>
 
             {/* Valor Total */}
-            {produto && produto.preco != null && (
+            {precoAtual != null && (
               <div className="mb-6 rounded-lg border border-zinc-700 bg-zinc-800/50 p-4">
                 <p className="text-sm text-zinc-400">Valor total do produto</p>
                 <p className="text-3xl font-bold" style={{ color: "#E9B20E" }}>
-                  R$ {formatPrice(produto.preco)}
+                  R$ {formatPrice(precoAtual)}
                 </p>
               </div>
             )}

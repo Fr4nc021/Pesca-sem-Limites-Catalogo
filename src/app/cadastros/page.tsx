@@ -52,6 +52,17 @@ type FormArma = {
   em_destaque: boolean;
 };
 
+type Variacao = {
+  id?: string;
+  calibre_id: string;
+  comprimento_cano: string;
+  preco: string;
+  fotoFiles?: File[];
+  fotoPreviews?: string[];
+  fotosExistentes?: FotoArma[];
+  fotosParaRemover?: string[];
+};
+
 const initialForm: FormArma = {
   categoria_id: "",
   nome: "",
@@ -97,6 +108,8 @@ export default function CadastrosPage() {
   const [filtroMarca, setFiltroMarca] = useState<string>("");
   const [filtroCalibre, setFiltroCalibre] = useState<string>("");
   const [filtroNome, setFiltroNome] = useState<string>("");
+  const [comVariacao, setComVariacao] = useState(false);
+  const [variacoes, setVariacoes] = useState<Variacao[]>([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -269,7 +282,73 @@ export default function CadastrosPage() {
     setFotosExistentes(fotosExistentes.filter(f => f.id !== fotoId));
   };
 
-  const openEditModal = (arma: Arma) => {
+  const addVariacao = () => {
+    setVariacoes((prev) => [
+      ...prev,
+      { calibre_id: "", comprimento_cano: "", preco: "", fotoFiles: [], fotoPreviews: [], fotosExistentes: [], fotosParaRemover: [] },
+    ]);
+  };
+
+  const removeVariacao = (index: number) => {
+    const v = variacoes[index];
+    if (v.fotoPreviews) v.fotoPreviews.forEach((url) => URL.revokeObjectURL(url));
+    setVariacoes((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateVariacao = (index: number, field: keyof Variacao, value: string | string[] | File[] | FotoArma[]) => {
+    setVariacoes((prev) => {
+      const next = [...prev];
+      const cur = { ...next[index] };
+      if (field === "fotoFiles") cur.fotoFiles = value as File[];
+      else if (field === "fotoPreviews") cur.fotoPreviews = value as string[];
+      else if (field === "fotosExistentes") cur.fotosExistentes = value as FotoArma[];
+      else if (field === "fotosParaRemover") cur.fotosParaRemover = value as string[];
+      else (cur as any)[field] = value;
+      next[index] = cur;
+      return next;
+    });
+  };
+
+  const handleVariacaoFotoChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const previews = files.map((f) => URL.createObjectURL(f));
+    setVariacoes((prev) => {
+      const next = [...prev];
+      const cur = { ...next[index] };
+      cur.fotoFiles = [...(cur.fotoFiles || []), ...files];
+      cur.fotoPreviews = [...(cur.fotoPreviews || []), ...previews];
+      next[index] = cur;
+      return next;
+    });
+  };
+
+  const removeVariacaoFoto = (variacaoIndex: number, fotoIndex: number) => {
+    setVariacoes((prev) => {
+      const next = [...prev];
+      const cur = { ...next[variacaoIndex] };
+      const files = cur.fotoFiles || [];
+      const previews = cur.fotoPreviews || [];
+      if (previews[fotoIndex]) URL.revokeObjectURL(previews[fotoIndex]);
+      cur.fotoFiles = files.filter((_, i) => i !== fotoIndex);
+      cur.fotoPreviews = previews.filter((_, i) => i !== fotoIndex);
+      next[variacaoIndex] = cur;
+      return next;
+    });
+  };
+
+  const removeVariacaoFotoExistente = (variacaoIndex: number, fotoId: string) => {
+    setVariacoes((prev) => {
+      const next = [...prev];
+      const cur = { ...next[variacaoIndex] };
+      cur.fotosExistentes = (cur.fotosExistentes || []).filter((f) => f.id !== fotoId);
+      cur.fotosParaRemover = [...(cur.fotosParaRemover || []), fotoId];
+      next[variacaoIndex] = cur;
+      return next;
+    });
+  };
+
+  const openEditModal = async (arma: Arma) => {
     setEditingId(arma.id);
     setForm({
       categoria_id: arma.categoria_id?.toString() || "",
@@ -288,6 +367,37 @@ export default function CadastrosPage() {
     setFotoPreviews([]);
     setFotosExistentes(arma.fotos || []);
     setFotosParaRemover([]);
+    setComVariacao(false);
+    setVariacoes([]);
+
+    const { data: variacoesData } = await supabase
+      .from("variacoes_armas")
+      .select("id, calibre_id, comprimento_cano, preco")
+      .eq("arma_id", arma.id)
+      .order("created_at", { ascending: true });
+
+    if (variacoesData && variacoesData.length > 0) {
+      setComVariacao(true);
+      const variacoesComFotos = await Promise.all(
+        variacoesData.map(async (v: any) => {
+          const { data: fotosVar } = await supabase
+            .from("fotos_armas")
+            .select("id, foto_url, ordem")
+            .eq("variacao_id", v.id)
+            .order("ordem");
+          return {
+            id: v.id,
+            calibre_id: v.calibre_id || "",
+            comprimento_cano: v.comprimento_cano || "",
+            preco: v.preco != null ? Number(v.preco).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "",
+            fotosExistentes: (fotosVar || []).map((f: any) => ({ id: f.id, foto_url: f.foto_url, ordem: f.ordem })),
+            fotosParaRemover: [] as string[],
+          };
+        })
+      );
+      setVariacoes(variacoesComFotos);
+    }
+
     setShowModal(true);
   };
 
@@ -298,13 +408,16 @@ export default function CadastrosPage() {
     setFotoPreviews([]);
     setFotosExistentes([]);
     setFotosParaRemover([]);
+    setComVariacao(false);
+    setVariacoes([]);
     setShowModal(true);
   };
 
   const closeModal = () => {
-    // Limpar previews ao fechar modal
-    fotoPreviews.forEach(preview => URL.revokeObjectURL(preview));
-    
+    fotoPreviews.forEach((preview) => URL.revokeObjectURL(preview));
+    variacoes.forEach((v) => {
+      (v.fotoPreviews || []).forEach((url) => URL.revokeObjectURL(url));
+    });
     setShowModal(false);
     setEditingId(null);
     setForm(initialForm);
@@ -312,7 +425,14 @@ export default function CadastrosPage() {
     setFotoPreviews([]);
     setFotosExistentes([]);
     setFotosParaRemover([]);
+    setComVariacao(false);
+    setVariacoes([]);
     setMessage(null);
+  };
+
+  const parsePreco = (s: string) => {
+    if (!s || !s.trim()) return null;
+    return parseFloat(s.replace(/\./g, "").replace(",", "."));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -325,8 +445,151 @@ export default function CadastrosPage() {
         ? parseFloat(form.preco.replace(/\./g, "").replace(",", "."))
         : null;
 
+      if (comVariacao) {
+        if (variacoes.length === 0) {
+          setMessage({ type: "error", text: "Adicione pelo menos uma variação (calibre, cano e valor)." });
+          setSubmitLoading(false);
+          return;
+        }
+        for (const v of variacoes) {
+          if (!v.calibre_id || !String(v.comprimento_cano).trim() || !String(v.preco).trim()) {
+            setMessage({ type: "error", text: "Preencha calibre, comprimento do cano e preço em todas as variações." });
+            setSubmitLoading(false);
+            return;
+          }
+        }
+
+        if (editingId) {
+          const updateData: any = {
+            categoria_id: form.categoria_id ? parseInt(form.categoria_id) : null,
+            nome: form.nome || null,
+            preco: null,
+            funcionamento_id: form.funcionamento_id || null,
+            espec_capacidade_tiros: form.espec_capacidade_tiros || null,
+            espec_carregadores: form.espec_carregadores || null,
+            marca_id: form.marca_id || null,
+            calibres_id: null,
+            espec_comprimento_cano: null,
+            caracteristica_acabamento: form.caracteristica_acabamento || null,
+            em_destaque: form.em_destaque || false,
+          };
+          const { error: updateError } = await supabase.from("armas").update(updateData).eq("id", editingId);
+          if (updateError) throw updateError;
+
+          const currentVariacaoIds = variacoes.map((v) => v.id).filter(Boolean) as string[];
+          if (currentVariacaoIds.length > 0) {
+            const { data: existingVar } = await supabase.from("variacoes_armas").select("id").eq("arma_id", editingId);
+            const toDelete = (existingVar || []).filter((ev: any) => !currentVariacaoIds.includes(ev.id)).map((ev: any) => ev.id);
+            if (toDelete.length > 0) await supabase.from("variacoes_armas").delete().in("id", toDelete);
+          } else {
+            await supabase.from("variacoes_armas").delete().eq("arma_id", editingId);
+          }
+
+          for (let i = 0; i < variacoes.length; i++) {
+            const v = variacoes[i];
+            const precoVar = parsePreco(v.preco);
+            if (precoVar == null) continue;
+            let variacaoId: string;
+            if (v.id) {
+              await supabase
+                .from("variacoes_armas")
+                .update({ calibre_id: v.calibre_id || null, comprimento_cano: v.comprimento_cano.trim(), preco: precoVar })
+                .eq("id", v.id);
+              variacaoId = v.id;
+            } else {
+              const { data: inserted, error: insErr } = await supabase
+                .from("variacoes_armas")
+                .insert({ arma_id: editingId, calibre_id: v.calibre_id || null, comprimento_cano: v.comprimento_cano.trim(), preco: precoVar })
+                .select("id")
+                .single();
+              if (insErr || !inserted) throw insErr || new Error("Erro ao criar variação");
+              variacaoId = inserted.id;
+            }
+
+            const fotosToRemove = v.fotosParaRemover || [];
+            if (fotosToRemove.length > 0) {
+              const { data: urls } = await supabase.from("fotos_armas").select("foto_url").in("id", fotosToRemove);
+              if (urls) {
+                const paths = urls.map((f: any) => f.foto_url?.includes("/fotos-armas/") ? f.foto_url.substring(f.foto_url.indexOf("/fotos-armas/") + "/fotos-armas/".length) : null).filter(Boolean);
+                if (paths.length) await supabase.storage.from("fotos-armas").remove(paths);
+              }
+              await supabase.from("fotos_armas").delete().in("id", fotosToRemove);
+            }
+
+            const files = v.fotoFiles || [];
+            let ordemBase = 0;
+            const { data: maxOrdem } = await supabase.from("fotos_armas").select("ordem").eq("variacao_id", variacaoId).order("ordem", { ascending: false }).limit(1);
+            if (maxOrdem && maxOrdem[0]) ordemBase = (maxOrdem[0] as any).ordem + 1;
+            for (let j = 0; j < files.length; j++) {
+              const file = files[j];
+              const ext = file.name.split(".").pop();
+              const path = `armas/${editingId}-var-${variacaoId}-${Date.now()}-${j}.${ext}`;
+              const { error: upErr } = await supabase.storage.from("fotos-armas").upload(path, file, { cacheControl: "3600", upsert: true });
+              if (upErr) throw new Error(`Upload da foto: ${upErr.message}`);
+              const { data: pub } = supabase.storage.from("fotos-armas").getPublicUrl(path);
+              const { error: insFoto } = await supabase.from("fotos_armas").insert({ arma_id: editingId, variacao_id: variacaoId, foto_url: pub.publicUrl, ordem: ordemBase + j });
+              if (insFoto) throw new Error(`Salvar foto: ${insFoto.message}`);
+            }
+          }
+
+          setMessage({ type: "ok", text: "Arma atualizada com sucesso." });
+        } else {
+          const { data: insertData, error: insertError } = await supabase
+            .from("armas")
+            .insert({
+              categoria_id: form.categoria_id ? parseInt(form.categoria_id) : null,
+              nome: form.nome || null,
+              preco: null,
+              funcionamento_id: form.funcionamento_id || null,
+              espec_capacidade_tiros: form.espec_capacidade_tiros || null,
+              espec_carregadores: form.espec_carregadores || null,
+              marca_id: form.marca_id || null,
+              calibres_id: null,
+              espec_comprimento_cano: null,
+              caracteristica_acabamento: form.caracteristica_acabamento || null,
+              em_destaque: form.em_destaque || false,
+            })
+            .select("id")
+            .single();
+          if (insertError || !insertData) throw insertError || new Error("Erro ao cadastrar arma");
+          const armaId = insertData.id as string;
+
+          for (let i = 0; i < variacoes.length; i++) {
+            const v = variacoes[i];
+            const precoVar = parsePreco(v.preco);
+            if (precoVar == null) continue;
+            const { data: varRow, error: varErr } = await supabase
+              .from("variacoes_armas")
+              .insert({ arma_id: armaId, calibre_id: v.calibre_id || null, comprimento_cano: v.comprimento_cano.trim(), preco: precoVar })
+              .select("id")
+              .single();
+            if (varErr || !varRow) throw varErr || new Error("Erro ao criar variação");
+            const variacaoId = varRow.id;
+
+            const files = v.fotoFiles || [];
+            for (let j = 0; j < files.length; j++) {
+              const file = files[j];
+              const ext = file.name.split(".").pop();
+              const path = `armas/${armaId}-var-${variacaoId}-${Date.now()}-${j}.${ext}`;
+              const { error: upErr } = await supabase.storage.from("fotos-armas").upload(path, file, { cacheControl: "3600", upsert: true });
+              if (upErr) throw new Error(`Upload da foto: ${upErr.message}`);
+              const { data: pub } = supabase.storage.from("fotos-armas").getPublicUrl(path);
+              const { error: insFoto } = await supabase.from("fotos_armas").insert({ arma_id: armaId, variacao_id: variacaoId, foto_url: pub.publicUrl, ordem: j });
+              if (insFoto) throw new Error(`Salvar foto: ${insFoto.message}`);
+            }
+          }
+
+          setMessage({ type: "ok", text: "Arma cadastrada com sucesso." });
+        }
+
+        await fetchArmas();
+        setTimeout(() => closeModal(), 1000);
+        setSubmitLoading(false);
+        return;
+      }
+
       if (editingId) {
-        // Editar arma existente
+        // Editar arma existente (sem variação)
         const updateData: any = {
           categoria_id: form.categoria_id ? parseInt(form.categoria_id) : null,
           nome: form.nome || null,
@@ -1028,9 +1291,26 @@ export default function CadastrosPage() {
                       placeholder="Nome da arma"
                     />
                   </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="comVariacao"
+                      type="checkbox"
+                      checked={comVariacao}
+                      onChange={(e) => {
+                        setComVariacao(e.target.checked);
+                        if (!e.target.checked) setVariacoes([]);
+                        else if (variacoes.length === 0) addVariacao();
+                      }}
+                      className="h-5 w-5 rounded border-zinc-600 bg-zinc-800/50 text-[#E9B20E] focus:ring-1 focus:ring-[#E9B20E]"
+                    />
+                    <label htmlFor="comVariacao" className="text-sm font-medium text-zinc-300 cursor-pointer">
+                      Produto com variação (calibre, tamanho de cano e valor por opção)
+                    </label>
+                  </div>
                   <div>
                     <label htmlFor="foto" className={labelClass}>
-                      Fotos da arma {editingId && "(adicione novas fotos)"}
+                      Fotos da arma {!comVariacao && editingId && "(adicione novas fotos)"}
+                      {comVariacao && " (fotos gerais; use a seção Variações para fotos por cano)"}
                     </label>
                     <input
                       id="foto"
@@ -1096,20 +1376,22 @@ export default function CadastrosPage() {
                       </div>
                     )}
                   </div>
-                  <div>
-                    <label htmlFor="preco" className={labelClass}>
-                      Preço (R$)
-                    </label>
-                    <input
-                      id="preco"
-                      name="preco"
-                      type="text"
-                      value={form.preco}
-                      onChange={handleChange}
-                      className={inputClass}
-                      placeholder="0,00"
-                    />
-                  </div>
+                  {!comVariacao && (
+                    <div>
+                      <label htmlFor="preco" className={labelClass}>
+                        Preço (R$)
+                      </label>
+                      <input
+                        id="preco"
+                        name="preco"
+                        type="text"
+                        value={form.preco}
+                        onChange={handleChange}
+                        className={inputClass}
+                        placeholder="0,00"
+                      />
+                    </div>
+                  )}
                   <div className="flex items-center gap-3">
                     <input
                       id="em_destaque"
@@ -1125,6 +1407,121 @@ export default function CadastrosPage() {
                   </div>
                 </div>
               </section>
+
+              {/* Variações (calibre + cano + preço + fotos por opção) */}
+              {comVariacao && (
+                <section className="rounded-xl border border-zinc-700/50 bg-zinc-900/30 p-6">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-white">
+                      Variações (calibre, tamanho de cano e valor)
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={addVariacao}
+                      className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                      style={{ backgroundColor: "#E9B20E", color: "#030711" }}
+                    >
+                      + Adicionar variação
+                    </button>
+                  </div>
+                  <div className="space-y-6">
+                    {variacoes.map((v, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-zinc-600 bg-zinc-800/30 p-4"
+                      >
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-sm font-medium text-zinc-400">Variação {idx + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeVariacao(idx)}
+                            className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-500/20"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <div>
+                            <label className={labelClass}>Calibre</label>
+                            <select
+                              value={v.calibre_id}
+                              onChange={(e) => updateVariacao(idx, "calibre_id", e.target.value)}
+                              className={inputClass}
+                            >
+                              <option value="">Selecione</option>
+                              {calibres.map((c) => (
+                                <option key={c.id} value={c.id}>{c.nome}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={labelClass}>Comprimento do cano</label>
+                            <input
+                              type="text"
+                              value={v.comprimento_cano}
+                              onChange={(e) => updateVariacao(idx, "comprimento_cano", e.target.value)}
+                              className={inputClass}
+                              placeholder="Ex.: 4 pol."
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass}>Preço (R$)</label>
+                            <input
+                              type="text"
+                              value={v.preco}
+                              onChange={(e) => updateVariacao(idx, "preco", e.target.value)}
+                              className={inputClass}
+                              placeholder="0,00"
+                            />
+                          </div>
+                        </div>
+                        <div className="mt-4">
+                          <label className={labelClass}>Fotos desta variação (tamanho de cano)</label>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => handleVariacaoFotoChange(idx, e)}
+                            className={inputClass}
+                          />
+                          {v.fotosExistentes && v.fotosExistentes.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {v.fotosExistentes.map((f) => (
+                                <div key={f.id} className="relative">
+                                  <img src={f.foto_url} alt="" className="h-20 w-20 rounded object-cover" />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeVariacaoFotoExistente(idx, f.id)}
+                                    className="absolute -right-1 -top-1 rounded-full bg-red-500 p-0.5 text-white"
+                                  >
+                                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {v.fotoPreviews && v.fotoPreviews.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {v.fotoPreviews.map((url, i) => (
+                                <div key={i} className="relative">
+                                  <img src={url} alt="" className="h-20 w-20 rounded object-cover" />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeVariacaoFoto(idx, i)}
+                                    className="absolute -right-1 -top-1 rounded-full bg-red-500 p-0.5 text-white"
+                                  >
+                                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {/* Especificações */}
               <section className="rounded-xl border border-zinc-700/50 bg-zinc-900/30 p-6">

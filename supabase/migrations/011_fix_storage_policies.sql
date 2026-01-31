@@ -15,3 +15,4 @@ USING (bucket_id = 'fotos-armas');
 -- As políticas de UPDATE e DELETE já existem na migration 006
 -- Verificar se estão corretas e não duplicar
 
+

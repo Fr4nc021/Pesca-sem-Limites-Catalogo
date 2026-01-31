@@ -49,3 +49,4 @@ INSERT INTO categorias (nome) VALUES
   ('Fuzil')
 ON CONFLICT (nome) DO NOTHING;
 
+
