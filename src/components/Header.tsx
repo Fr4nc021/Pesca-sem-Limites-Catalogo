@@ -1,45 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../src/lib/supabaseClient";
+import { useAuth } from "../hooks/useAuth";
+import { supabase } from "../lib/supabaseClient";
 
 export default function Header() {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const checkUserRole = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", session.user.id)
-            .single();
-
-          setIsAdmin(profile?.role === "admin");
-        }
-      } catch (error) {
-        console.error("Erro ao verificar role:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkUserRole();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      checkUserRole();
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const { isAdmin, authLoading } = useAuth();
 
   const handleCategorias = () => {
     router.push("/categorias");

@@ -137,96 +137,104 @@ export default function ProdutosPorCategoriaPage() {
         setLoading(true);
         setError(null);
 
-        // Buscar o nome da categoria primeiro
-        const { data: categoriaData, error: categoriaError } = await supabase
-          .from("categorias")
-          .select("nome")
-          .eq("id", categoriaId)
-          .single();
+        // Buscar categoria e armas em paralelo
+        const [categoriaResult, armasResult] = await Promise.all([
+          supabase
+            .from("categorias")
+            .select("nome")
+            .eq("id", categoriaId)
+            .single(),
+          supabase
+            .from("armas")
+            .select("*")
+            .eq("categoria_id", categoriaId)
+            .order("nome")
+        ]);
 
-        if (categoriaError || !categoriaData) {
+        if (categoriaResult.error || !categoriaResult.data) {
           setError("Categoria não encontrada.");
           setLoading(false);
           return;
         }
 
-        setNomeCategoria(categoriaData.nome);
+        setNomeCategoria(categoriaResult.data.nome);
 
-        // Buscar produtos filtrados por categoria_id
-        const { data: armasData, error: armasError } = await supabase
-          .from("armas")
-          .select("*")
-          .eq("categoria_id", categoriaId)
-          .order("nome");
+        if (armasResult.error) {
+          console.error("Erro ao buscar produtos:", armasResult.error);
+          setError(`Erro ao carregar produtos: ${armasResult.error.message}`);
+          setLoading(false);
+          return;
+        }
 
-        if (armasError) {
-          console.error("Erro ao buscar produtos:", armasError);
-          setError(`Erro ao carregar produtos: ${armasError.message}`);
-        } else {
-          // Buscar IDs das armas
-          const armaIds = (armasData || []).map((a: any) => a.id);
-          
-          // Buscar preço mínimo por variação (para produtos com variações)
-          const { data: variacoesData } = await supabase
+        const armasData = armasResult.data || [];
+        const armaIds = armasData.map((a: any) => a.id);
+        
+        if (armaIds.length === 0) {
+          setArmas([]);
+          setArmasFiltradas([]);
+          setMinPrecoPorArma(new Map());
+          setLoading(false);
+          return;
+        }
+
+        // Buscar variações, fotos, marcas e calibres em paralelo
+        const [variacoesResult, fotosResult] = await Promise.all([
+          supabase
             .from("variacoes_armas")
             .select("arma_id, preco")
-            .in("arma_id", armaIds);
-          
-          const minMap = new Map<string, number>();
-          (variacoesData || []).forEach((v: { arma_id: string; preco: number }) => {
-            const preco = parseFloat(String(v.preco));
-            const current = minMap.get(v.arma_id);
-            if (current == null || preco < current) minMap.set(v.arma_id, preco);
-          });
-          setMinPrecoPorArma(minMap);
-          
-          // Buscar primeira foto de cada arma (ordem 0 ou menor ordem disponível)
-          let fotosMap = new Map<string, string>();
-          if (armaIds.length > 0) {
-            const { data: fotosData } = await supabase
-              .from("fotos_armas")
-              .select("arma_id, foto_url, ordem")
-              .in("arma_id", armaIds)
-              .order("ordem", { ascending: true });
+            .in("arma_id", armaIds),
+          supabase
+            .from("fotos_armas")
+            .select("arma_id, foto_url, ordem")
+            .in("arma_id", armaIds)
+            .order("arma_id, ordem", { ascending: true })
+        ]);
 
-            if (fotosData) {
-              fotosData.forEach((foto: any) => {
-                // Pegar apenas a primeira foto (menor ordem) de cada arma
-                if (!fotosMap.has(foto.arma_id)) {
-                  fotosMap.set(foto.arma_id, foto.foto_url);
-                }
-              });
-            }
+        // Processar variações para preço mínimo
+        const minMap = new Map<string, number>();
+        (variacoesResult.data || []).forEach((v: { arma_id: string; preco: number }) => {
+          const preco = parseFloat(String(v.preco));
+          const current = minMap.get(v.arma_id);
+          if (current == null || preco < current) minMap.set(v.arma_id, preco);
+        });
+        setMinPrecoPorArma(minMap);
+        
+        // Processar fotos - pegar apenas a primeira de cada arma
+        const fotosMap = new Map<string, string>();
+        (fotosResult.data || []).forEach((foto: any) => {
+          if (!fotosMap.has(foto.arma_id)) {
+            fotosMap.set(foto.arma_id, foto.foto_url);
           }
+        });
 
-          // Buscar marcas e calibres em batch para melhor performance
-          const marcaIds = [...new Set((armasData || []).map((a: any) => a.marca_id).filter(Boolean))];
-          const calibreIds = [...new Set((armasData || []).map((a: any) => a.calibre_id || a.calibres_id).filter(Boolean))];
+        // Extrair IDs únicos para marcas e calibres
+        const marcaIds = [...new Set(armasData.map((a: any) => a.marca_id).filter(Boolean))];
+        const calibreIds = [...new Set(armasData.map((a: any) => a.calibre_id || a.calibres_id).filter(Boolean))];
 
-          const [marcasResult, calibresResult] = await Promise.all([
-            marcaIds.length > 0
-              ? supabase.from("marcas").select("id, nome").in("id", marcaIds)
-              : { data: [], error: null },
-            calibreIds.length > 0
-              ? supabase.from("calibres").select("id, nome").in("id", calibreIds)
-              : { data: [], error: null },
-          ]);
+        // Buscar marcas e calibres em paralelo
+        const [marcasResult, calibresResult] = await Promise.all([
+          marcaIds.length > 0
+            ? supabase.from("marcas").select("id, nome").in("id", marcaIds)
+            : Promise.resolve({ data: [], error: null }),
+          calibreIds.length > 0
+            ? supabase.from("calibres").select("id, nome").in("id", calibreIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
 
-          const marcasMap = new Map((marcasResult.data || []).map((m: any) => [m.id, m.nome]));
-          const calibresMap = new Map((calibresResult.data || []).map((c: any) => [c.id, c.nome]));
+        const marcasMap = new Map((marcasResult.data || []).map((m: any) => [m.id, m.nome]));
+        const calibresMap = new Map((calibresResult.data || []).map((c: any) => [c.id, c.nome]));
 
-          const armasFormatadas = (armasData || []).map((arma: any) => {
-            const calibreId = arma.calibre_id || arma.calibres_id;
-            return {
-              ...arma,
-              marca: arma.marca_id && marcasMap.has(arma.marca_id) ? { nome: marcasMap.get(arma.marca_id) } : null,
-              calibre: calibreId && calibresMap.has(calibreId) ? { nome: calibresMap.get(calibreId) } : null,
-              primeiraFoto: fotosMap.get(arma.id) || arma.foto_url || null, // Usar primeira foto da tabela fotos_armas, ou fallback para foto_url
-            };
-          });
-          setArmas(armasFormatadas);
-          setArmasFiltradas(armasFormatadas);
-        }
+        const armasFormatadas = armasData.map((arma: any) => {
+          const calibreId = arma.calibre_id || arma.calibres_id;
+          return {
+            ...arma,
+            marca: arma.marca_id && marcasMap.has(arma.marca_id) ? { nome: marcasMap.get(arma.marca_id) } : null,
+            calibre: calibreId && calibresMap.has(calibreId) ? { nome: calibresMap.get(calibreId) } : null,
+            primeiraFoto: fotosMap.get(arma.id) || arma.foto_url || null,
+          };
+        });
+        setArmas(armasFormatadas);
+        setArmasFiltradas(armasFormatadas);
       } catch (err: any) {
         console.error("Erro:", err);
         setError(err?.message || "Erro ao carregar dados");

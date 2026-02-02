@@ -27,17 +27,24 @@ export default function ProdutosPage() {
     const fetchArmas = async () => {
       try {
         setLoading(true);
-        const { data, error: fetchError } = await supabase
-          .from("armas")
-          .select("id, nome, preco, foto_url")
-          .order("nome");
+        
+        // Buscar armas e variações em paralelo
+        const [armasResult, variacoesResult] = await Promise.all([
+          supabase
+            .from("armas")
+            .select("id, nome, preco, foto_url")
+            .order("nome"),
+          supabase
+            .from("variacoes_armas")
+            .select("arma_id, preco")
+        ]);
 
-        if (fetchError) {
-          setError(`Erro ao carregar produtos: ${fetchError.message}`);
+        if (armasResult.error) {
+          setError(`Erro ao carregar produtos: ${armasResult.error.message}`);
           return;
         }
 
-        const armasList = data || [];
+        const armasList = armasResult.data || [];
         setArmas(armasList);
 
         if (armasList.length === 0) {
@@ -45,14 +52,9 @@ export default function ProdutosPage() {
           return;
         }
 
-        const armaIds = armasList.map((a: Arma) => a.id);
-        const { data: variacoesData } = await supabase
-          .from("variacoes_armas")
-          .select("arma_id, preco")
-          .in("arma_id", armaIds);
-
+        // Processar variações para encontrar preço mínimo
         const minMap = new Map<string, number>();
-        (variacoesData || []).forEach((v: { arma_id: string; preco: number }) => {
+        (variacoesResult.data || []).forEach((v: { arma_id: string; preco: number }) => {
           const preco = parseFloat(String(v.preco));
           const current = minMap.get(v.arma_id);
           if (current == null || preco < current) minMap.set(v.arma_id, preco);

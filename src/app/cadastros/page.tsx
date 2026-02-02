@@ -178,71 +178,69 @@ export default function CadastrosPage() {
   const fetchArmas = async () => {
     setLoading(true);
     try {
-      const { data: armasData, error } = await supabase
-        .from("armas")
-        .select("*")
-        .order("nome");
-
-      if (error) throw error;
-
-      // Buscar todas as fotos das armas
-      const armaIds = (armasData || []).map((a: any) => a.id);
-      
-      let fotosMap = new Map<string, FotoArma[]>();
-      
-      // Só buscar fotos se houver armas e se a tabela existir
-      if (armaIds.length > 0) {
-        const { data: fotosData, error: fotosError } = await supabase
-          .from("fotos_armas")
+      // Buscar armas e dados relacionados em paralelo
+      const [armasResult, fotosResult] = await Promise.all([
+        supabase
+          .from("armas")
           .select("*")
-          .in("arma_id", armaIds)
-          .order("ordem");
+          .order("nome"),
+        // Buscar todas as fotos de uma vez (se houver armas)
+        supabase
+          .from("fotos_armas")
+          .select("id, arma_id, foto_url, ordem")
+          .order("arma_id, ordem")
+      ]);
 
-        // Se a tabela não existir, apenas logar o erro mas continuar
-        if (fotosError) {
-          console.warn("Erro ao buscar fotos (tabela pode não existir ainda):", fotosError);
-          // Continuar sem fotos se a tabela não existir
-        } else if (fotosData) {
-          fotosData.forEach((foto: any) => {
-            if (!fotosMap.has(foto.arma_id)) {
-              fotosMap.set(foto.arma_id, []);
-            }
-            fotosMap.get(foto.arma_id)!.push({
-              id: foto.id,
-              foto_url: foto.foto_url,
-              ordem: foto.ordem,
-            });
+      if (armasResult.error) throw armasResult.error;
+
+      const armasData = armasResult.data || [];
+      const armaIds = armasData.map((a: any) => a.id);
+      
+      // Processar fotos
+      let fotosMap = new Map<string, FotoArma[]>();
+      if (fotosResult.data && armaIds.length > 0) {
+        fotosResult.data.forEach((foto: any) => {
+          if (!fotosMap.has(foto.arma_id)) {
+            fotosMap.set(foto.arma_id, []);
+          }
+          fotosMap.get(foto.arma_id)!.push({
+            id: foto.id,
+            foto_url: foto.foto_url,
+            ordem: foto.ordem,
           });
-        }
+        });
       }
 
-      // Buscar dados relacionados
-      const marcaIds = [...new Set((armasData || []).map((a: any) => a.marca_id).filter(Boolean))];
-      const calibreIds = [...new Set((armasData || []).map((a: any) => a.calibre_id || a.calibres_id).filter(Boolean))];
-      const funcionamentoIds = [...new Set((armasData || []).map((a: any) => a.funcionamento_id).filter(Boolean))];
-      const categoriaIds = [...new Set((armasData || []).map((a: any) => a.categoria_id).filter(Boolean))];
+      // Extrair IDs únicos para buscar relacionamentos
+      const marcaIds = [...new Set(armasData.map((a: any) => a.marca_id).filter(Boolean))];
+      const calibreIds = [...new Set(armasData.map((a: any) => a.calibre_id || a.calibres_id).filter(Boolean))];
+      const funcionamentoIds = [...new Set(armasData.map((a: any) => a.funcionamento_id).filter(Boolean))];
+      const categoriaIds = [...new Set(armasData.map((a: any) => a.categoria_id).filter(Boolean))];
 
+      // Buscar todos os relacionamentos em paralelo
       const [marcasResult, calibresResult, funcionamentosResult, categoriasResult] = await Promise.all([
         marcaIds.length > 0
           ? supabase.from("marcas").select("id, nome").in("id", marcaIds)
-          : { data: [], error: null },
+          : Promise.resolve({ data: [], error: null }),
         calibreIds.length > 0
           ? supabase.from("calibres").select("id, nome").in("id", calibreIds)
-          : { data: [], error: null },
+          : Promise.resolve({ data: [], error: null }),
         funcionamentoIds.length > 0
           ? supabase.from("funcionamento").select("id, nome").in("id", funcionamentoIds)
-          : { data: [], error: null },
+          : Promise.resolve({ data: [], error: null }),
         categoriaIds.length > 0
           ? supabase.from("categorias").select("id, nome").in("id", categoriaIds)
-          : { data: [], error: null },
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
+      // Criar maps para lookup rápido
       const marcasMap = new Map((marcasResult.data || []).map((m: any) => [m.id, m.nome]));
       const calibresMap = new Map((calibresResult.data || []).map((c: any) => [c.id, c.nome]));
       const funcionamentosMap = new Map((funcionamentosResult.data || []).map((f: any) => [f.id, f.nome]));
       const categoriasMap = new Map((categoriasResult.data || []).map((c: any) => [c.id, c.nome]));
 
-      const armasFormatadas = (armasData || []).map((arma: any) => {
+      // Formatar dados
+      const armasFormatadas = armasData.map((arma: any) => {
         const calibreId = arma.calibre_id || arma.calibres_id;
         return {
           ...arma,
@@ -392,31 +390,51 @@ export default function CadastrosPage() {
     setComVariacao(false);
     setVariacoes([]);
 
-    const { data: variacoesData } = await supabase
-      .from("variacoes_armas")
-      .select("id, calibre_id, comprimento_cano, preco")
-      .eq("arma_id", arma.id)
-      .order("created_at", { ascending: true });
+    // Buscar variações e fotos em paralelo
+    const [variacoesResult, fotosResult] = await Promise.all([
+      supabase
+        .from("variacoes_armas")
+        .select("id, calibre_id, comprimento_cano, preco")
+        .eq("arma_id", arma.id)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("fotos_armas")
+        .select("id, variacao_id, foto_url, ordem")
+        .eq("arma_id", arma.id)
+        .order("variacao_id, ordem")
+    ]);
 
-    if (variacoesData && variacoesData.length > 0) {
+    const variacoesData = variacoesResult.data || [];
+    const fotosData = fotosResult.data || [];
+
+    if (variacoesData.length > 0) {
       setComVariacao(true);
-      const variacoesComFotos = await Promise.all(
-        variacoesData.map(async (v: any) => {
-          const { data: fotosVar } = await supabase
-            .from("fotos_armas")
-            .select("id, foto_url, ordem")
-            .eq("variacao_id", v.id)
-            .order("ordem");
-          return {
-            id: v.id,
-            calibre_id: v.calibre_id || "",
-            comprimento_cano: v.comprimento_cano || "",
-            preco: v.preco != null ? Number(v.preco).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "",
-            fotosExistentes: (fotosVar || []).map((f: any) => ({ id: f.id, foto_url: f.foto_url, ordem: f.ordem })),
-            fotosParaRemover: [] as string[],
-          };
-        })
-      );
+      
+      // Criar mapa de fotos por variação
+      const fotosPorVariacao = new Map<string, FotoArma[]>();
+      fotosData.forEach((foto: any) => {
+        if (foto.variacao_id) {
+          if (!fotosPorVariacao.has(foto.variacao_id)) {
+            fotosPorVariacao.set(foto.variacao_id, []);
+          }
+          fotosPorVariacao.get(foto.variacao_id)!.push({
+            id: foto.id,
+            foto_url: foto.foto_url,
+            ordem: foto.ordem,
+          });
+        }
+      });
+
+      // Formatar variações com suas fotos
+      const variacoesComFotos = variacoesData.map((v: any) => ({
+        id: v.id,
+        calibre_id: v.calibre_id || "",
+        comprimento_cano: v.comprimento_cano || "",
+        preco: v.preco != null ? Number(v.preco).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "",
+        fotosExistentes: fotosPorVariacao.get(v.id) || [],
+        fotosParaRemover: [] as string[],
+      }));
+      
       setVariacoes(variacoesComFotos);
     }
 
@@ -463,6 +481,13 @@ export default function CadastrosPage() {
     setSubmitLoading(true);
 
     try {
+      // Validação básica
+      if (!form.nome || !form.nome.trim()) {
+        setMessage({ type: "error", text: "O nome do produto é obrigatório." });
+        setSubmitLoading(false);
+        return;
+      }
+
       const precoValue = form.preco
         ? parseFloat(form.preco.replace(/\./g, "").replace(",", "."))
         : null;
@@ -539,18 +564,32 @@ export default function CadastrosPage() {
             }
 
             const files = v.fotoFiles || [];
-            let ordemBase = 0;
-            const { data: maxOrdem } = await supabase.from("fotos_armas").select("ordem").eq("variacao_id", variacaoId).order("ordem", { ascending: false }).limit(1);
-            if (maxOrdem && maxOrdem[0]) ordemBase = (maxOrdem[0] as any).ordem + 1;
-            for (let j = 0; j < files.length; j++) {
-              const file = files[j];
-              const ext = file.name.split(".").pop();
-              const path = `armas/${editingId}-var-${variacaoId}-${Date.now()}-${j}.${ext}`;
-              const { error: upErr } = await supabase.storage.from("fotos-armas").upload(path, file, { cacheControl: "3600", upsert: true });
-              if (upErr) throw new Error(`Upload da foto: ${upErr.message}`);
-              const { data: pub } = supabase.storage.from("fotos-armas").getPublicUrl(path);
-              const { error: insFoto } = await supabase.from("fotos_armas").insert({ arma_id: editingId, variacao_id: variacaoId, foto_url: pub.publicUrl, ordem: ordemBase + j });
-              if (insFoto) throw new Error(`Salvar foto: ${insFoto.message}`);
+            if (files.length > 0) {
+              // Buscar ordem base uma vez
+              let ordemBase = 0;
+              const { data: maxOrdem } = await supabase.from("fotos_armas").select("ordem").eq("variacao_id", variacaoId).order("ordem", { ascending: false }).limit(1);
+              if (maxOrdem && maxOrdem[0]) ordemBase = (maxOrdem[0] as any).ordem + 1;
+              
+              // Upload paralelo de todas as fotos
+              const uploadPromises = files.map(async (file, j) => {
+                const ext = file.name.split(".").pop();
+                const timestamp = Date.now();
+                const path = `armas/${editingId}-var-${variacaoId}-${timestamp}-${j}.${ext}`;
+                
+                const { error: upErr } = await supabase.storage.from("fotos-armas").upload(path, file, { cacheControl: "3600", upsert: false });
+                if (upErr) throw new Error(`Upload da foto ${j + 1}: ${upErr.message}`);
+                
+                const { data: pub } = supabase.storage.from("fotos-armas").getPublicUrl(path);
+                const { error: insFoto } = await supabase.from("fotos_armas").insert({ 
+                  arma_id: editingId, 
+                  variacao_id: variacaoId, 
+                  foto_url: pub.publicUrl, 
+                  ordem: ordemBase + j 
+                });
+                if (insFoto) throw new Error(`Salvar foto ${j + 1}: ${insFoto.message}`);
+              });
+              
+              await Promise.all(uploadPromises);
             }
           }
 
@@ -589,21 +628,35 @@ export default function CadastrosPage() {
             const variacaoId = varRow.id;
 
             const files = v.fotoFiles || [];
-            for (let j = 0; j < files.length; j++) {
-              const file = files[j];
-              const ext = file.name.split(".").pop();
-              const path = `armas/${armaId}-var-${variacaoId}-${Date.now()}-${j}.${ext}`;
-              const { error: upErr } = await supabase.storage.from("fotos-armas").upload(path, file, { cacheControl: "3600", upsert: true });
-              if (upErr) throw new Error(`Upload da foto: ${upErr.message}`);
-              const { data: pub } = supabase.storage.from("fotos-armas").getPublicUrl(path);
-              const { error: insFoto } = await supabase.from("fotos_armas").insert({ arma_id: armaId, variacao_id: variacaoId, foto_url: pub.publicUrl, ordem: j });
-              if (insFoto) throw new Error(`Salvar foto: ${insFoto.message}`);
+            if (files.length > 0) {
+              // Upload paralelo de todas as fotos
+              const uploadPromises = files.map(async (file, j) => {
+                const ext = file.name.split(".").pop();
+                const timestamp = Date.now();
+                const path = `armas/${armaId}-var-${variacaoId}-${timestamp}-${j}.${ext}`;
+                
+                const { error: upErr } = await supabase.storage.from("fotos-armas").upload(path, file, { cacheControl: "3600", upsert: false });
+                if (upErr) throw new Error(`Upload da foto ${j + 1}: ${upErr.message}`);
+                
+                const { data: pub } = supabase.storage.from("fotos-armas").getPublicUrl(path);
+                const { error: insFoto } = await supabase.from("fotos_armas").insert({ 
+                  arma_id: armaId, 
+                  variacao_id: variacaoId, 
+                  foto_url: pub.publicUrl, 
+                  ordem: j 
+                });
+                if (insFoto) throw new Error(`Salvar foto ${j + 1}: ${insFoto.message}`);
+              });
+              
+              await Promise.all(uploadPromises);
             }
           }
 
           setMessage({ type: "ok", text: "Arma cadastrada com sucesso." });
         }
 
+        // Aguardar um pouco para garantir que tudo foi salvo antes de recarregar
+        await new Promise(resolve => setTimeout(resolve, 500));
         await fetchArmas();
         setTimeout(() => closeModal(), 1000);
         setSubmitLoading(false);
@@ -701,13 +754,14 @@ export default function CadastrosPage() {
 
           const uploadPromises = fotoFiles.map(async (file, index) => {
             const fileExt = file.name.split(".").pop();
-            const filePath = `armas/${editingId}-${Date.now()}-${index}.${fileExt}`;
+            const timestamp = Date.now();
+            const filePath = `armas/${editingId}-${timestamp}-${index}.${fileExt}`;
 
             const { error: uploadError } = await supabase.storage
               .from("fotos-armas")
               .upload(filePath, file, {
                 cacheControl: "3600",
-                upsert: true,
+                upsert: false,
               });
 
             if (uploadError) {
@@ -719,35 +773,19 @@ export default function CadastrosPage() {
               .from("fotos-armas")
               .getPublicUrl(filePath);
 
-            console.log("URL pública gerada:", publicUrlData.publicUrl);
-            console.log("Inserindo foto na tabela fotos_armas:", {
-              arma_id: editingId,
-              foto_url: publicUrlData.publicUrl,
-              ordem: ordemInicial + index,
-            });
-
             // Inserir na tabela fotos_armas
-            const { data: insertedFoto, error: insertFotoError } = await supabase
+            const { error: insertFotoError } = await supabase
               .from("fotos_armas")
               .insert({
                 arma_id: editingId,
                 foto_url: publicUrlData.publicUrl,
                 ordem: ordemInicial + index,
-              })
-              .select();
+              });
 
             if (insertFotoError) {
               console.error("Erro ao inserir foto:", insertFotoError);
-              console.error("Detalhes do erro:", {
-                code: insertFotoError.code,
-                message: insertFotoError.message,
-                details: insertFotoError.details,
-                hint: insertFotoError.hint,
-              });
               throw new Error(`Erro ao salvar URL da foto ${index + 1}: ${insertFotoError.message || insertFotoError.code || "Erro desconhecido"}`);
             }
-
-            console.log("Foto inserida com sucesso:", insertedFoto);
           });
 
           await Promise.all(uploadPromises);
@@ -786,13 +824,14 @@ export default function CadastrosPage() {
         if (fotoFiles.length > 0) {
           const uploadPromises = fotoFiles.map(async (file, index) => {
             const fileExt = file.name.split(".").pop();
-            const filePath = `armas/${armaId}-${Date.now()}-${index}.${fileExt}`;
+            const timestamp = Date.now();
+            const filePath = `armas/${armaId}-${timestamp}-${index}.${fileExt}`;
 
             const { error: uploadError } = await supabase.storage
               .from("fotos-armas")
               .upload(filePath, file, {
                 cacheControl: "3600",
-                upsert: true,
+                upsert: false,
               });
 
             if (uploadError) {
@@ -804,35 +843,19 @@ export default function CadastrosPage() {
               .from("fotos-armas")
               .getPublicUrl(filePath);
 
-            console.log("URL pública gerada:", publicUrlData.publicUrl);
-            console.log("Inserindo foto na tabela fotos_armas:", {
-              arma_id: armaId,
-              foto_url: publicUrlData.publicUrl,
-              ordem: index,
-            });
-
             // Inserir na tabela fotos_armas
-            const { data: insertedFoto, error: insertFotoError } = await supabase
+            const { error: insertFotoError } = await supabase
               .from("fotos_armas")
               .insert({
                 arma_id: armaId,
                 foto_url: publicUrlData.publicUrl,
                 ordem: index,
-              })
-              .select();
+              });
 
             if (insertFotoError) {
               console.error("Erro ao inserir foto:", insertFotoError);
-              console.error("Detalhes do erro:", {
-                code: insertFotoError.code,
-                message: insertFotoError.message,
-                details: insertFotoError.details,
-                hint: insertFotoError.hint,
-              });
               throw new Error(`Erro ao salvar URL da foto ${index + 1}: ${insertFotoError.message || insertFotoError.code || "Erro desconhecido"}`);
             }
-
-            console.log("Foto inserida com sucesso:", insertedFoto);
           });
 
           await Promise.all(uploadPromises);
@@ -841,17 +864,21 @@ export default function CadastrosPage() {
         setMessage({ type: "ok", text: "Arma cadastrada com sucesso." });
       }
 
+      // Aguardar um pouco para garantir que tudo foi salvo antes de recarregar
+      await new Promise(resolve => setTimeout(resolve, 500));
       // Recarregar lista e fechar modal após 1 segundo
       await fetchArmas();
       setTimeout(() => {
         closeModal();
       }, 1000);
     } catch (err: any) {
+      console.error("Erro ao salvar produto:", err);
       setMessage({
         type: "error",
-        text: err?.message || "Erro ao salvar arma",
+        text: err?.message || "Erro ao salvar produto. Verifique o console para mais detalhes.",
       });
     } finally {
+      // Garantir que o loading sempre seja desativado
       setSubmitLoading(false);
     }
   };
