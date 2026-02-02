@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../src/lib/supabaseClient";
@@ -8,6 +8,38 @@ import { supabase } from "../../src/lib/supabaseClient";
 export default function Header() {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const checkUserRole = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", session.user.id)
+            .single();
+
+          setIsAdmin(profile?.role === "admin");
+        }
+      } catch (error) {
+        console.error("Erro ao verificar role:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkUserRole();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      checkUserRole();
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleCategorias = () => {
     router.push("/categorias");
@@ -73,29 +105,31 @@ export default function Header() {
             <span className="text-sm font-bold text-zinc-900">Categorias</span>
           </button>
 
-          {/* Cadastros Button */}
-          <button
-            className="flex items-center gap-2 rounded-lg px-3 py-2 transition-colors"
-            style={{ backgroundColor: "#E9B20E" }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#D4A00D")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#E9B20E")}
-            onClick={() => router.push("/cadastros")}
-          >
-            <svg
-              className="h-4 w-4 text-zinc-900"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
+          {/* Cadastros Button - apenas para admin */}
+          {isAdmin && (
+            <button
+              className="flex items-center gap-2 rounded-lg px-3 py-2 transition-colors"
+              style={{ backgroundColor: "#E9B20E" }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#D4A00D")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#E9B20E")}
+              onClick={() => router.push("/cadastros")}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            <span className="text-sm font-bold text-zinc-900">Cadastros</span>
-          </button>
+              <svg
+                className="h-4 w-4 text-zinc-900"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              <span className="text-sm font-bold text-zinc-900">Cadastros</span>
+            </button>
+          )}
 
           {/* Logout Button */}
           <button
@@ -194,27 +228,29 @@ export default function Header() {
               <span className="text-sm font-bold text-zinc-900">Categorias</span>
             </button>
 
-            {/* Cadastros Button */}
-            <button
-              className="flex items-center gap-2 rounded-lg px-3 py-2 transition-colors w-full"
-              style={{ backgroundColor: "#E9B20E" }}
-              onClick={handleCadastros}
-            >
-              <svg
-                className="h-4 w-4 text-zinc-900"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
+            {/* Cadastros Button - apenas para admin */}
+            {isAdmin && (
+              <button
+                className="flex items-center gap-2 rounded-lg px-3 py-2 transition-colors w-full"
+                style={{ backgroundColor: "#E9B20E" }}
+                onClick={handleCadastros}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              <span className="text-sm font-bold text-zinc-900">Cadastros</span>
-            </button>
+                <svg
+                  className="h-4 w-4 text-zinc-900"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <span className="text-sm font-bold text-zinc-900">Cadastros</span>
+              </button>
+            )}
 
             {/* Logout Button */}
             <button

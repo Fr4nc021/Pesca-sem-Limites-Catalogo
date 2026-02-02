@@ -153,6 +153,28 @@ export default function CadastrosPage() {
     fetchArmas();
   }, [authLoading]);
 
+  useEffect(() => {
+    const checkAdminAccess = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+
+        if (profile?.role !== "admin") {
+          router.push("/dashboard");
+        }
+      }
+    };
+
+    if (!authLoading) {
+      checkAdminAccess();
+    }
+  }, [authLoading, router]);
+
   const fetchArmas = async () => {
     setLoading(true);
     try {

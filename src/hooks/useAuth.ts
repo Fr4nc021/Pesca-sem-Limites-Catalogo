@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabaseClient";
 export function useAuth() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -15,13 +16,22 @@ export function useAuth() {
         } = await supabase.auth.getSession();
 
         if (error || !session) {
-          // Se houver erro de token inválido ou se não houver sessão, limpa e redireciona
           if (error) {
             console.error("Erro na sessão:", error.message);
             await supabase.auth.signOut();
           }
           router.push("/login");
         } else {
+          // Buscar role do usuário
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", session.user.id)
+            .single();
+
+          if (!profileError && profile) {
+            setUserRole(profile.role);
+          }
           setAuthLoading(false);
         }
       } catch (err) {
@@ -38,7 +48,18 @@ export function useAuth() {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!session && event === "SIGNED_OUT") {
         router.push("/login");
+        setUserRole(null);
       } else if (session) {
+        // Buscar role quando a sessão mudar
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+
+        if (profile) {
+          setUserRole(profile.role);
+        }
         setAuthLoading(false);
       }
     });
@@ -46,6 +67,5 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, [router]);
 
-  return { authLoading };
+  return { authLoading, userRole, isAdmin: userRole === "admin" };
 }
-
