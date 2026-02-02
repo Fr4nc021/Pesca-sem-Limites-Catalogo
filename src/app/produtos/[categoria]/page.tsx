@@ -43,12 +43,15 @@ export default function ProdutosPorCategoriaPage() {
   const [armasFiltradas, setArmasFiltradas] = useState<Arma[]>([]);
   const [nomeCategoria, setNomeCategoria] = useState<string>(`Categoria ${categoriaId}`);
   const [error, setError] = useState<string | null>(null);
+  const [minPrecoPorArma, setMinPrecoPorArma] = useState<Map<string, number>>(new Map()); 
+
   
   // Estados para filtros
   const [marcas, setMarcas] = useState<Marca[]>([]);
   const [calibres, setCalibres] = useState<Calibre[]>([]);
   const [marcaSelecionada, setMarcaSelecionada] = useState<string | null>(null);
   const [calibreSelecionado, setCalibreSelecionado] = useState<string | null>(null);
+  const [filtroNome, setFiltroNome] = useState<string>("");
   const [dropdownMarcaAberto, setDropdownMarcaAberto] = useState(false);
   const [dropdownCalibreAberto, setDropdownCalibreAberto] = useState(false);
   
@@ -110,8 +113,14 @@ export default function ProdutosPorCategoriaPage() {
       });
     }
 
+    if (filtroNome) {
+      filtradas = filtradas.filter((arma) => 
+        (arma.nome || "").toLowerCase().includes(filtroNome.toLowerCase())
+      );
+    }
+
     setArmasFiltradas(filtradas);
-  }, [armas, marcaSelecionada, calibreSelecionado]);
+  }, [armas, marcaSelecionada, calibreSelecionado, filtroNome]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -156,6 +165,20 @@ export default function ProdutosPorCategoriaPage() {
         } else {
           // Buscar IDs das armas
           const armaIds = (armasData || []).map((a: any) => a.id);
+          
+          // Buscar preço mínimo por variação (para produtos com variações)
+          const { data: variacoesData } = await supabase
+            .from("variacoes_armas")
+            .select("arma_id, preco")
+            .in("arma_id", armaIds);
+          
+          const minMap = new Map<string, number>();
+          (variacoesData || []).forEach((v: { arma_id: string; preco: number }) => {
+            const preco = parseFloat(String(v.preco));
+            const current = minMap.get(v.arma_id);
+            if (current == null || preco < current) minMap.set(v.arma_id, preco);
+          });
+          setMinPrecoPorArma(minMap);
           
           // Buscar primeira foto de cada arma (ordem 0 ou menor ordem disponível)
           let fotosMap = new Map<string, string>();
@@ -228,6 +251,7 @@ export default function ProdutosPorCategoriaPage() {
   const limparFiltros = () => {
     setMarcaSelecionada(null);
     setCalibreSelecionado(null);
+    setFiltroNome("");
   };
 
   if (authLoading || loading) {
@@ -281,7 +305,7 @@ export default function ProdutosPorCategoriaPage() {
           <div className="mb-6">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm text-white">Filtros</p>
-              {(marcaSelecionada || calibreSelecionado) && (
+              {(marcaSelecionada || calibreSelecionado || filtroNome) && (
                 <button
                   onClick={limparFiltros}
                   className="text-sm text-zinc-400 hover:text-white transition-colors"
@@ -290,7 +314,23 @@ export default function ProdutosPorCategoriaPage() {
                 </button>
               )}
             </div>
-            <div className="flex gap-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {/* Input Nome */}
+              <div>
+                <label htmlFor="filtro-nome" className="mb-1.5 block text-sm font-medium text-zinc-300">
+                  Nome
+                </label>
+                <input
+                  id="filtro-nome"
+                  type="text"
+                  value={filtroNome}
+                  onChange={(e) => setFiltroNome(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-600 bg-zinc-800/50 px-4 py-2.5 text-white placeholder-zinc-500 focus:border-[#E9B20E] focus:outline-none focus:ring-1 focus:ring-[#E9B20E]"
+                  placeholder="Buscar por nome..."
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex gap-3">
               {/* Dropdown Marca */}
               <div className="relative" ref={marcaDropdownRef}>
                 <button
@@ -408,11 +448,11 @@ export default function ProdutosPorCategoriaPage() {
           {(!armasFiltradas || armasFiltradas.length === 0) && (
             <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-8 text-center">
               <p className="text-zinc-300 mb-2">
-                {marcaSelecionada || calibreSelecionado
+                {marcaSelecionada || calibreSelecionado || filtroNome
                   ? "Nenhum produto encontrado com os filtros aplicados."
                   : "Nenhum produto encontrado para essa categoria."}
               </p>
-              {(marcaSelecionada || calibreSelecionado) && (
+              {(marcaSelecionada || calibreSelecionado || filtroNome) && (
                 <button
                   onClick={limparFiltros}
                   className="mt-4 text-[#E9B20E] hover:underline"
@@ -457,14 +497,20 @@ export default function ProdutosPorCategoriaPage() {
 
                 {/* Preço com seta */}
                 <div className="flex items-center justify-between">
-                  {arma.preco != null && (
-                    <p className="font-bold text-[#E9B20E]">
-                      R$ {parseFloat(arma.preco.toString()).toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </p>
-                  )}
+                  {(() => {
+                    const minVariacao = minPrecoPorArma.get(arma.id);
+                    const precoExibir = minVariacao != null ? minVariacao : arma.preco;
+                    if (precoExibir == null) return null;
+                    const formatado = parseFloat(precoExibir.toString()).toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    });
+                    return (
+                      <p className="font-bold text-[#E9B20E]">
+                        {minVariacao != null ? "A partir de " : ""}R$ {formatado}
+                      </p>
+                    );
+                  })()}
                   <svg
                     className="h-5 w-5 text-zinc-400 transition-transform group-hover:translate-x-1"
                     fill="none"

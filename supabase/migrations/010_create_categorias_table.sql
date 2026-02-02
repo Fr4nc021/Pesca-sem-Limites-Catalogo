@@ -50,3 +50,5 @@ INSERT INTO categorias (nome) VALUES
 ON CONFLICT (nome) DO NOTHING;
 
 
+
+

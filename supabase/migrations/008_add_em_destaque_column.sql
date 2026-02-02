@@ -6,3 +6,5 @@ ADD COLUMN IF NOT EXISTS em_destaque BOOLEAN DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_armas_em_destaque ON armas(em_destaque) WHERE em_destaque = TRUE;
 
 
+
+

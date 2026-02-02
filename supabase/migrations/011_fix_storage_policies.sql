@@ -16,3 +16,5 @@ USING (bucket_id = 'fotos-armas');
 -- Verificar se estão corretas e não duplicar
 
 
+
+
