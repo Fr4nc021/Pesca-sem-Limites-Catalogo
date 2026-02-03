@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import { supabase } from "../../../src/lib/supabaseClient";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuth } from "../../contexts/AuthContext";
 
 type ArmaDestaque = {
   id: string;

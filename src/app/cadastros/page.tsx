@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import { supabase } from "../../lib/supabaseClient";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuth } from "../../contexts/AuthContext";
 
 type Marca = { id: string; nome: string };
 type Calibre = { id: string; nome: string };

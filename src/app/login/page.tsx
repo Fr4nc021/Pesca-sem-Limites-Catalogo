@@ -98,7 +98,7 @@ export default function LoginPage() {
           height: auto;
         }
       `}} />
-      <div className="login-container">
+      <div className="login-container" style={{ position: "relative" }}>
       <div className="login-content">
         <img src="/logo.png" alt="Logo" className="login-logo" />
         <div style={styles.card} className="login-card">
@@ -151,12 +151,18 @@ export default function LoginPage() {
         </button>
         </div>
       </div>
+      
+      {/* Desenvolvido por */}
+      <div style={styles.developedBy}>
+        <p style={styles.developedByText}>
+          Desenvolvido por CodeByFranco
+        </p>
+      </div>
       </div>
     </>
   );
 }
 
-/* === STYLES (mantive simples aqui, pode colar os seus se quiser) === */
 const styles: { [key: string]: CSSProperties } = {
   card: {
     padding: 40,
@@ -193,5 +199,18 @@ const styles: { [key: string]: CSSProperties } = {
     borderRadius: 8,
     fontWeight: 600,
     cursor: "pointer",
+  },
+  developedBy: {
+    position: "absolute",
+    bottom: 20,
+    left: 0,
+    right: 0,
+    zIndex: 1,
+    textAlign: "center",
+  },
+  developedByText: {
+    fontSize: 12,
+    color: "#fff",
+    margin: 0,
   },
 }
