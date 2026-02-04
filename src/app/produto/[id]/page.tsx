@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Header from "../../../components/Header";
 import { supabase } from "../../../lib/supabaseClient";
-import { useAuth } from "../../../contexts/AuthContext";
 import { exportProductToPDF, exportProductToImage } from "../../../lib/exportProduct";
 
 type Arma = {
@@ -44,7 +43,6 @@ export default function ProdutoPage() {
   const produtoId = params.id as string;
 
   const [loading, setLoading] = useState(true);
-  const { authLoading } = useAuth();
   const [produto, setProduto] = useState<Arma | null>(null);
   const [fotos, setFotos] = useState<FotoArma[]>([]);
   const [variacoes, setVariacoes] = useState<Variacao[]>([]);
@@ -54,10 +52,16 @@ export default function ProdutoPage() {
   const [showParcelamento, setShowParcelamento] = useState(false);
 
   useEffect(() => {
-    if (authLoading || !produtoId) return;
+    if (!produtoId) {
+      setLoading(false);
+      setError("ID do produto inválido");
+      return;
+    }
 
     const fetchProduto = async () => {
       try {
+        setLoading(true);
+        setError(null);
         // Buscar o produto com relacionamentos
         const { data: produtoData, error: produtoError } = await supabase
           .from("armas")
@@ -182,7 +186,7 @@ export default function ProdutoPage() {
     };
 
     fetchProduto();
-  }, [authLoading, produtoId]);
+  }, [produtoId]);
 
   // Valores atuais: produto com variação selecionada ou dados do produto
   const selectedVariacao = variacoes.find((v) => v.id === selectedVariacaoId) ?? null;
@@ -200,7 +204,7 @@ export default function ProdutoPage() {
     setFotoAtualIndex(0);
   }, [selectedVariacaoId, fotosExibir.length]);
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <div
         className="flex min-h-screen items-center justify-center"

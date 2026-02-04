@@ -18,11 +18,16 @@ export default function LoginPage() {
     // Ao carregar a página de login, se houver um erro de token guardado, 
     // tentamos limpar a sessão para evitar erros de refresh token.
     const clearStaleSession = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) {
-        await supabase.auth.signOut();
-      } else if (session) {
-        router.push("/dashboard");
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          await supabase.auth.signOut();
+        } else if (session) {
+          // Usar replace para evitar histórico de navegação indevido
+          router.replace("/dashboard");
+        }
+      } catch (err) {
+        console.error("Erro ao verificar sessão:", err);
       }
     };
     clearStaleSession();
@@ -44,7 +49,8 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
+    // Usar replace para evitar histórico de navegação indevido
+    router.replace("/dashboard");
   }
 
   return (

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 
 type AuthContextType = {
@@ -20,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [authLoading, setAuthLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -40,7 +41,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error("Erro na sessão:", error.message);
             await supabase.auth.signOut();
           }
-          router.push("/login");
+          // Só redireciona se não estiver já em /login
+          if (pathname !== "/login") {
+            router.push("/login");
+          }
           setAuthLoading(false);
           return;
         }
@@ -65,7 +69,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error("Erro inesperado:", err);
         await supabase.auth.signOut();
-        router.push("/login");
+        // Só redireciona se não estiver já em /login
+        if (pathname !== "/login") {
+          router.push("/login");
+        }
         setAuthLoading(false);
       }
     };
@@ -75,10 +82,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!session && event === "SIGNED_OUT") {
-          router.push("/login");
+          // Só redireciona se não estiver já em /login
+          if (pathname !== "/login") {
+            router.push("/login");
+          }
           setUserRole(null);
           setUserId(null);
           hasCheckedRef.current = false;
+          setAuthLoading(false);
         } else if (session && event === "SIGNED_IN") {
           // Buscar role quando realmente fizer login
           const { data: profile } = await supabase
@@ -101,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     return () => subscription.unsubscribe();
-  }, []); // Removido router das dependências para evitar re-renders
+  }, [router, pathname]); // Incluir router e pathname para evitar stale closure
 
   return (
     <AuthContext.Provider
