@@ -4,7 +4,6 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Header from "../../../components/Header";
 import { supabase } from "../../../lib/supabaseClient";
-import { useAuth } from "../../../contexts/AuthContext";
 
 type Arma = {
   id: string;
@@ -38,7 +37,6 @@ export default function ProdutosPorCategoriaPage() {
   const categoriaId = parseInt(categoria);
 
   const [loading, setLoading] = useState(true);
-  const { authLoading } = useAuth();
   const [armas, setArmas] = useState<Arma[]>([]);
   const [armasFiltradas, setArmasFiltradas] = useState<Arma[]>([]);
   const [nomeCategoria, setNomeCategoria] = useState<string>(`Categoria ${categoriaId}`);
@@ -61,8 +59,6 @@ export default function ProdutosPorCategoriaPage() {
 
   // Buscar marcas e calibres disponíveis
   useEffect(() => {
-    if (authLoading) return;
-
     const fetchMarcas = async () => {
       const { data } = await supabase
         .from("marcas")
@@ -81,7 +77,7 @@ export default function ProdutosPorCategoriaPage() {
 
     fetchMarcas();
     fetchCalibres();
-  }, [authLoading]);
+  }, []);
 
   // Fechar dropdowns ao clicar fora
   useEffect(() => {
@@ -123,8 +119,6 @@ export default function ProdutosPorCategoriaPage() {
   }, [armas, marcaSelecionada, calibreSelecionado, filtroNome]);
 
   useEffect(() => {
-    if (authLoading) return;
-
     // Validação: verificar se o ID é um número válido
     if (isNaN(categoriaId)) {
       setError("Categoria inválida.");
@@ -244,7 +238,7 @@ export default function ProdutosPorCategoriaPage() {
     };
 
     fetchData();
-  }, [authLoading, categoriaId]);
+  }, [categoriaId]);
 
   const handleMarcaSelecionada = (marcaId: string | null) => {
     setMarcaSelecionada(marcaId);
@@ -262,7 +256,7 @@ export default function ProdutosPorCategoriaPage() {
     setFiltroNome("");
   };
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <div
         className="flex min-h-screen items-center justify-center"

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import { supabase } from "../../lib/supabaseClient";
-import { useAuth } from "../../contexts/AuthContext";
 
 type Arma = {
   id: string;
@@ -15,15 +14,12 @@ type Arma = {
 
 export default function ProdutosPage() {
   const router = useRouter();
-  const { authLoading } = useAuth();
   const [armas, setArmas] = useState<Arma[]>([]);
   const [minPrecoPorArma, setMinPrecoPorArma] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (authLoading) return;
-
     const fetchArmas = async () => {
       try {
         setLoading(true);
@@ -41,25 +37,25 @@ export default function ProdutosPage() {
 
         if (armasResult.error) {
           setError(`Erro ao carregar produtos: ${armasResult.error.message}`);
-          return;
-        }
-
-        const armasList = armasResult.data || [];
-        setArmas(armasList);
-
-        if (armasList.length === 0) {
+          setArmas([]);
           setMinPrecoPorArma(new Map());
-          return;
-        }
+        } else {
+          const armasList = armasResult.data || [];
+          setArmas(armasList);
 
-        // Processar variações para encontrar preço mínimo
-        const minMap = new Map<string, number>();
-        (variacoesResult.data || []).forEach((v: { arma_id: string; preco: number }) => {
-          const preco = parseFloat(String(v.preco));
-          const current = minMap.get(v.arma_id);
-          if (current == null || preco < current) minMap.set(v.arma_id, preco);
-        });
-        setMinPrecoPorArma(minMap);
+          if (armasList.length === 0) {
+            setMinPrecoPorArma(new Map());
+          } else {
+            // Processar variações para encontrar preço mínimo
+            const minMap = new Map<string, number>();
+            (variacoesResult.data || []).forEach((v: { arma_id: string; preco: number }) => {
+              const preco = parseFloat(String(v.preco));
+              const current = minMap.get(v.arma_id);
+              if (current == null || preco < current) minMap.set(v.arma_id, preco);
+            });
+            setMinPrecoPorArma(minMap);
+          }
+        }
       } catch (err: any) {
         setError(err?.message || "Erro ao carregar produtos");
       } finally {
@@ -68,9 +64,9 @@ export default function ProdutosPage() {
     };
 
     fetchArmas();
-  }, [authLoading]);
+  }, []);
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <div
         className="flex min-h-screen items-center justify-center"
