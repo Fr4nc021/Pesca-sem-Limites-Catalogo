@@ -22,3 +22,4 @@ USING (bucket_id = 'fotos-armas');
 
 
 
+
