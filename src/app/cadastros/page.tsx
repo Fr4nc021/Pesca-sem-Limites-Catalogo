@@ -110,41 +110,177 @@ export default function CadastrosPage() {
   const [filtroNome, setFiltroNome] = useState<string>("");
   const [comVariacao, setComVariacao] = useState(false);
   const [variacoes, setVariacoes] = useState<Variacao[]>([]);
+  const [activeTab, setActiveTab] = useState<"armas" | "marcas" | "calibres">(
+    "armas"
+  );
+  // Marcas
+  const [novaMarca, setNovaMarca] = useState("");
+  const [marcaEditandoId, setMarcaEditandoId] = useState<string | null>(null);
+  const [marcaEditandoNome, setMarcaEditandoNome] = useState("");
+
+  // Calibres
+  const [novoCalibre, setNovoCalibre] = useState("");
+  const [calibreEditandoId, setCalibreEditandoId] = useState<string | null>(null);
+  const [calibreEditandoNome, setCalibreEditandoNome] = useState("");
+
+  const fetchMarcas = async () => {
+    const { data, error } = await supabase
+      .from("marcas")
+      .select("id, nome")
+      .order("nome");
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    if (data) setMarcas(data);
+  };
+
+  const fetchCalibres = async () => {
+    const { data, error } = await supabase
+      .from("calibres")
+      .select("id, nome")
+      .order("nome");
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    if (data) setCalibres(data);
+  };
+
+  const fetchFuncionamentos = async () => {
+    const { data, error } = await supabase
+      .from("funcionamento")
+      .select("id, nome")
+      .order("nome");
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    if (data) setFuncionamentos(data);
+  };
+
+  const fetchCategorias = async () => {
+    const { data, error } = await supabase
+      .from("categorias")
+      .select("id, nome")
+      .order("nome");
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    if (data) setCategorias(data);
+  };
+
+  const handleCriarMarca = async () => {
+    if (!novaMarca.trim()) return;
+
+    const { error } = await supabase
+      .from("marcas")
+      .insert({ nome: novaMarca.trim() });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setNovaMarca("");
+    await fetchMarcas();
+  };
+
+  const handleIniciarEdicaoMarca = (id: string, nome: string) => {
+    setMarcaEditandoId(id);
+    setMarcaEditandoNome(nome);
+  };
+
+  const handleSalvarEdicaoMarca = async () => {
+    if (!marcaEditandoId || !marcaEditandoNome.trim()) return;
+
+    const { error } = await supabase
+      .from("marcas")
+      .update({ nome: marcaEditandoNome.trim() })
+      .eq("id", marcaEditandoId);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setMarcaEditandoId(null);
+    setMarcaEditandoNome("");
+    await fetchMarcas();
+  };
+
+  const handleExcluirMarca = async (id: string) => {
+    const { error } = await supabase.from("marcas").delete().eq("id", id);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    await fetchMarcas();
+  };
+
+  const handleCriarCalibre = async () => {
+    if (!novoCalibre.trim()) return;
+
+    const { error } = await supabase
+      .from("calibres")
+      .insert({ nome: novoCalibre.trim() });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setNovoCalibre("");
+    await fetchCalibres();
+  };
+
+  const handleIniciarEdicaoCalibre = (id: string, nome: string) => {
+    setCalibreEditandoId(id);
+    setCalibreEditandoNome(nome);
+  };
+
+  const handleSalvarEdicaoCalibre = async () => {
+    if (!calibreEditandoId || !calibreEditandoNome.trim()) return;
+
+    const { error } = await supabase
+      .from("calibres")
+      .update({ nome: calibreEditandoNome.trim() })
+      .eq("id", calibreEditandoId);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setCalibreEditandoId(null);
+    setCalibreEditandoNome("");
+    await fetchCalibres();
+  };
+
+  const handleExcluirCalibre = async (id: string) => {
+    const { error } = await supabase.from("calibres").delete().eq("id", id);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    await fetchCalibres();
+  };
 
   useEffect(() => {
     if (authLoading) return;
-
-    const fetchMarcas = async () => {
-      const { data } = await supabase
-        .from("marcas")
-        .select("id, nome")
-        .order("nome");
-      if (data) setMarcas(data);
-    };
-
-    const fetchCalibres = async () => {
-      const { data } = await supabase
-        .from("calibres")
-        .select("id, nome")
-        .order("nome");
-      if (data) setCalibres(data);
-    };
-
-    const fetchFuncionamentos = async () => {
-      const { data } = await supabase
-        .from("funcionamento")
-        .select("id, nome")
-        .order("nome");
-      if (data) setFuncionamentos(data);
-    };
-
-    const fetchCategorias = async () => {
-      const { data } = await supabase
-        .from("categorias")
-        .select("id, nome")
-        .order("nome");
-      if (data) setCategorias(data);
-    };
 
     fetchMarcas();
     fetchCalibres();
@@ -938,6 +1074,7 @@ export default function CadastrosPage() {
         // Continuar mesmo se não conseguir buscar fotos
       }
 
+      
       // Deletar a arma do banco de dados (o CASCADE vai deletar as fotos automaticamente)
       const { error: deleteError } = await supabase
         .from("armas")
@@ -1027,8 +1164,246 @@ export default function CadastrosPage() {
             </div>
           )}
 
-          {/* Filtros */}
-          <div className="mb-6 rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-4">
+          {/* Abas de gerenciamento */}
+          <div className="mb-6 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab("armas")}
+              className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                activeTab === "armas"
+                  ? "bg-zinc-100 text-zinc-900"
+                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              }`}
+            >
+              Armas
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("marcas")}
+              className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                activeTab === "marcas"
+                  ? "bg-zinc-100 text-zinc-900"
+                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              }`}
+            >
+              Marcas
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("calibres")}
+              className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                activeTab === "calibres"
+                  ? "bg-zinc-100 text-zinc-900"
+                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              }`}
+            >
+              Calibres
+            </button>
+          </div>
+
+          {/* Conteúdo da aba Marcas */}
+          {activeTab === "marcas" && (
+            <section className="mb-6 rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white">Marcas</h2>
+              </div>
+
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  value={novaMarca}
+                  onChange={(e) => setNovaMarca(e.target.value)}
+                  className={inputClass}
+                  placeholder="Nova marca"
+                />
+                <button
+                  type="button"
+                  onClick={handleCriarMarca}
+                  className="w-full rounded-lg px-4 py-2.5 text-sm font-medium text-zinc-900 sm:w-auto"
+                  style={{ backgroundColor: "#E9B20E" }}
+                >
+                  Adicionar marca
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {marcas.length === 0 ? (
+                  <p className="text-sm text-zinc-400">
+                    Nenhuma marca cadastrada. Cadastre uma nova acima.
+                  </p>
+                ) : (
+                  marcas.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex flex-col items-start justify-between gap-2 rounded-lg border border-zinc-700/60 bg-zinc-900/40 px-3 py-2 sm:flex-row sm:items-center"
+                    >
+                      {marcaEditandoId === m.id ? (
+                        <input
+                          type="text"
+                          value={marcaEditandoNome}
+                          onChange={(e) =>
+                            setMarcaEditandoNome(e.target.value)
+                          }
+                          className={inputClass}
+                        />
+                      ) : (
+                        <span className="text-sm text-zinc-200">{m.nome}</span>
+                      )}
+
+                      <div className="flex gap-2">
+                        {marcaEditandoId === m.id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handleSalvarEdicaoMarca}
+                              className="rounded px-3 py-1 text-xs font-medium text-zinc-900"
+                              style={{ backgroundColor: "#E9B20E" }}
+                            >
+                              Salvar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMarcaEditandoId(null);
+                                setMarcaEditandoNome("");
+                              }}
+                              className="rounded px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                            >
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleIniciarEdicaoMarca(m.id, m.nome)
+                              }
+                              className="rounded px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleExcluirMarca(m.id)}
+                              className="rounded px-3 py-1 text-xs text-red-400 hover:bg-red-500/20"
+                            >
+                              Excluir
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Conteúdo da aba Calibres */}
+          {activeTab === "calibres" && (
+            <section className="mb-6 rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white">Calibres</h2>
+              </div>
+
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  value={novoCalibre}
+                  onChange={(e) => setNovoCalibre(e.target.value)}
+                  className={inputClass}
+                  placeholder="Novo calibre"
+                />
+                <button
+                  type="button"
+                  onClick={handleCriarCalibre}
+                  className="w-full rounded-lg px-4 py-2.5 text-sm font-medium text-zinc-900 sm:w-auto"
+                  style={{ backgroundColor: "#E9B20E" }}
+                >
+                  Adicionar calibre
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {calibres.length === 0 ? (
+                  <p className="text-sm text-zinc-400">
+                    Nenhum calibre cadastrado. Cadastre um novo acima.
+                  </p>
+                ) : (
+                  calibres.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex flex-col items-start justify-between gap-2 rounded-lg border border-zinc-700/60 bg-zinc-900/40 px-3 py-2 sm:flex-row sm:items-center"
+                    >
+                      {calibreEditandoId === c.id ? (
+                        <input
+                          type="text"
+                          value={calibreEditandoNome}
+                          onChange={(e) =>
+                            setCalibreEditandoNome(e.target.value)
+                          }
+                          className={inputClass}
+                        />
+                      ) : (
+                        <span className="text-sm text-zinc-200">{c.nome}</span>
+                      )}
+
+                      <div className="flex gap-2">
+                        {calibreEditandoId === c.id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handleSalvarEdicaoCalibre}
+                              className="rounded px-3 py-1 text-xs font-medium text-zinc-900"
+                              style={{ backgroundColor: "#E9B20E" }}
+                            >
+                              Salvar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCalibreEditandoId(null);
+                                setCalibreEditandoNome("");
+                              }}
+                              className="rounded px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                            >
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleIniciarEdicaoCalibre(c.id, c.nome)
+                              }
+                              className="rounded px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleExcluirCalibre(c.id)}
+                              className="rounded px-3 py-1 text-xs text-red-400 hover:bg-red-500/20"
+                            >
+                              Excluir
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Conteúdo da aba Armas */}
+          {activeTab === "armas" && (
+            <>
+              {/* Filtros */}
+              <div className="mb-6 rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Filtros</h2>
               {(filtroMarca || filtroCalibre || filtroNome) && (
@@ -1096,172 +1471,178 @@ export default function CadastrosPage() {
                 Mostrando {armasFiltradas.length} de {armas.length} armas
               </div>
             )}
-          </div>
+              </div>
 
-          {loading ? (
-            <div className="text-center text-white">Carregando...</div>
-          ) : armas.length === 0 ? (
-            <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-8 text-center">
-              <p className="text-zinc-400">Nenhuma arma cadastrada ainda.</p>
-            </div>
-          ) : armasFiltradas.length === 0 ? (
-            <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-8 text-center">
-              <p className="text-zinc-400">Nenhuma arma encontrada com os filtros aplicados.</p>
-              <button
-                onClick={limparFiltros}
-                className="mt-4 text-[#E9B20E] hover:underline"
-              >
-                Limpar filtros
-              </button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse rounded-lg border border-zinc-700/50 bg-zinc-900/30">
-                <thead>
-                  <tr className="border-b border-zinc-700/50">
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
-                      Foto
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
-                      Nome
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
-                      Categoria
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
-                      Marca
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
-                      Calibre
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
-                      Preço
-                    </th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-zinc-300">
-                      Destaque
-                    </th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-zinc-300">
-                      Ações
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {armasFiltradas.map((arma) => (
-                    <tr
-                      key={arma.id}
-                      className="border-b border-zinc-700/30 transition-colors hover:bg-zinc-800/30"
-                    >
-                      <td className="px-4 py-3">
-                        {arma.fotos && arma.fotos.length > 0 ? (
-                          <div className="flex gap-1">
-                            {arma.fotos.slice(0, 3).map((foto) => (
+              {loading ? (
+                <div className="text-center text-white">Carregando...</div>
+              ) : armas.length === 0 ? (
+                <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-8 text-center">
+                  <p className="text-zinc-400">Nenhuma arma cadastrada ainda.</p>
+                </div>
+              ) : armasFiltradas.length === 0 ? (
+                <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 p-8 text-center">
+                  <p className="text-zinc-400">
+                    Nenhuma arma encontrada com os filtros aplicados.
+                  </p>
+                  <button
+                    onClick={limparFiltros}
+                    className="mt-4 text-[#E9B20E] hover:underline"
+                  >
+                    Limpar filtros
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse rounded-lg border border-zinc-700/50 bg-zinc-900/30">
+                    <thead>
+                      <tr className="border-b border-zinc-700/50">
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
+                          Foto
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
+                          Nome
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
+                          Categoria
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
+                          Marca
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
+                          Calibre
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-300">
+                          Preço
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-zinc-300">
+                          Destaque
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-zinc-300">
+                          Ações
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {armasFiltradas.map((arma) => (
+                        <tr
+                          key={arma.id}
+                          className="border-b border-zinc-700/30 transition-colors hover:bg-zinc-800/30"
+                        >
+                          <td className="px-4 py-3">
+                            {arma.fotos && arma.fotos.length > 0 ? (
+                              <div className="flex gap-1">
+                                {arma.fotos.slice(0, 3).map((foto) => (
+                                  <img
+                                    key={foto.id}
+                                    src={foto.foto_url}
+                                    alt={arma.nome || ""}
+                                    className="h-16 w-16 rounded object-cover"
+                                  />
+                                ))}
+                                {arma.fotos.length > 3 && (
+                                  <div className="flex h-16 w-16 items-center justify-center rounded bg-zinc-800 text-xs text-zinc-500">
+                                    +{arma.fotos.length - 3}
+                                  </div>
+                                )}
+                              </div>
+                            ) : arma.foto_url ? (
                               <img
-                                key={foto.id}
-                                src={foto.foto_url}
+                                src={arma.foto_url}
                                 alt={arma.nome || ""}
                                 className="h-16 w-16 rounded object-cover"
                               />
-                            ))}
-                            {arma.fotos.length > 3 && (
+                            ) : (
                               <div className="flex h-16 w-16 items-center justify-center rounded bg-zinc-800 text-xs text-zinc-500">
-                                +{arma.fotos.length - 3}
+                                Sem foto
                               </div>
                             )}
-                          </div>
-                        ) : arma.foto_url ? (
-                          <img
-                            src={arma.foto_url}
-                            alt={arma.nome || ""}
-                            className="h-16 w-16 rounded object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-16 w-16 items-center justify-center rounded bg-zinc-800 text-xs text-zinc-500">
-                            Sem foto
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-white">{arma.nome || "-"}</td>
-                      <td className="px-4 py-3 text-zinc-300">
-                        {arma.categoria?.nome || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-300">
-                        {arma.marca?.nome || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-300">
-                        {arma.calibre?.nome || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-zinc-300">
-                        {arma.preco
-                          ? `R$ ${arma.preco.toLocaleString("pt-BR", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}`
-                          : "-"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center">
-                          {arma.em_destaque ? (
-                            <span
-                              className="rounded-full px-2 py-1 text-xs font-medium"
-                              style={{
-                                backgroundColor: "rgba(233, 178, 14, 0.2)",
-                                color: "#E9B20E",
-                              }}
-                            >
-                              ★ Destaque
-                            </span>
-                          ) : (
-                            <span className="text-xs text-zinc-500">-</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => openEditModal(arma)}
-                            className="rounded-lg p-2 text-[#E9B20E] transition-colors hover:bg-zinc-800"
-                            title="Editar"
-                          >
-                            <svg
-                              className="h-5 w-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              strokeWidth={2}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                              />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(arma.id)}
-                            className="rounded-lg p-2 text-red-400 transition-colors hover:bg-zinc-800"
-                            title="Excluir"
-                          >
-                            <svg
-                              className="h-5 w-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              strokeWidth={2}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                              />
-                            </svg>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          </td>
+                          <td className="px-4 py-3 text-white">
+                            {arma.nome || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-300">
+                            {arma.categoria?.nome || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-300">
+                            {arma.marca?.nome || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-300">
+                            {arma.calibre?.nome || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-300">
+                            {arma.preco
+                              ? `R$ ${arma.preco.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`
+                              : "-"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center">
+                              {arma.em_destaque ? (
+                                <span
+                                  className="rounded-full px-2 py-1 text-xs font-medium"
+                                  style={{
+                                    backgroundColor: "rgba(233, 178, 14, 0.2)",
+                                    color: "#E9B20E",
+                                  }}
+                                >
+                                  ★ Destaque
+                                </span>
+                              ) : (
+                                <span className="text-xs text-zinc-500">-</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => openEditModal(arma)}
+                                className="rounded-lg p-2 text-[#E9B20E] transition-colors hover:bg-zinc-800"
+                                title="Editar"
+                              >
+                                <svg
+                                  className="h-5 w-5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirm(arma.id)}
+                                className="rounded-lg p-2 text-red-400 transition-colors hover:bg-zinc-800"
+                                title="Excluir"
+                              >
+                                <svg
+                                  className="h-5 w-5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>
