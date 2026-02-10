@@ -182,7 +182,7 @@ export default function Dashboard() {
         {/* Main Headline */}
         <div className="flex flex-col gap-2">
           <h1 className="text-5xl font-bold leading-tight text-white md:text-6xl lg:text-7xl">
-            Excelência em NOVOO
+            Excelência em
           </h1>
           <h1
             className="text-5xl font-bold leading-tight md:text-6xl lg:text-7xl"
