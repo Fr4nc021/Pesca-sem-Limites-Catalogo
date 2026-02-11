@@ -42,6 +42,7 @@ export default function ProdutosPorCategoriaPage() {
   const [nomeCategoria, setNomeCategoria] = useState<string>(`Categoria ${categoriaId}`);
   const [error, setError] = useState<string | null>(null);
   const [minPrecoPorArma, setMinPrecoPorArma] = useState<Map<string, number>>(new Map()); 
+  const [calibresPorArma, setCalibresPorArma] = useState<Map<string, Set<string>>>(new Map()); // Mapa de arma_id -> Set de calibre_ids (das variações)
 
   
   // Estados para filtros
@@ -104,8 +105,19 @@ export default function ProdutosPorCategoriaPage() {
 
     if (calibreSelecionado) {
       filtradas = filtradas.filter((arma) => {
+        // Verificar calibre da arma principal
         const calibreId = arma.calibre_id || arma.calibres_id;
-        return calibreId === calibreSelecionado;
+        if (calibreId === calibreSelecionado) {
+          return true;
+        }
+        
+        // Verificar se alguma variação da arma tem o calibre selecionado
+        const calibresVariacoes = calibresPorArma.get(arma.id);
+        if (calibresVariacoes && calibresVariacoes.has(calibreSelecionado)) {
+          return true;
+        }
+        
+        return false;
       });
     }
 
@@ -116,7 +128,7 @@ export default function ProdutosPorCategoriaPage() {
     }
 
     setArmasFiltradas(filtradas);
-  }, [armas, marcaSelecionada, calibreSelecionado, filtroNome]);
+  }, [armas, marcaSelecionada, calibreSelecionado, filtroNome, calibresPorArma]);
 
   useEffect(() => {
     // Validação: verificar se o ID é um número válido
@@ -167,6 +179,7 @@ export default function ProdutosPorCategoriaPage() {
           setArmas([]);
           setArmasFiltradas([]);
           setMinPrecoPorArma(new Map());
+          setCalibresPorArma(new Map());
           setLoading(false);
           return;
         }
@@ -175,7 +188,7 @@ export default function ProdutosPorCategoriaPage() {
         const [variacoesResult, fotosResult] = await Promise.all([
           supabase
             .from("variacoes_armas")
-            .select("arma_id, preco")
+            .select("arma_id, preco, calibre_id")
             .in("arma_id", armaIds),
           supabase
             .from("fotos_armas")
@@ -184,14 +197,24 @@ export default function ProdutosPorCategoriaPage() {
             .order("arma_id, ordem", { ascending: true })
         ]);
 
-        // Processar variações para preço mínimo
+        // Processar variações para preço mínimo e calibres por arma
         const minMap = new Map<string, number>();
-        (variacoesResult.data || []).forEach((v: { arma_id: string; preco: number }) => {
+        const calibresPorArmaMap = new Map<string, Set<string>>();
+        (variacoesResult.data || []).forEach((v: { arma_id: string; preco: number; calibre_id: string | null }) => {
           const preco = parseFloat(String(v.preco));
           const current = minMap.get(v.arma_id);
           if (current == null || preco < current) minMap.set(v.arma_id, preco);
+          
+          // Adicionar calibre da variação ao mapa de calibres por arma
+          if (v.calibre_id) {
+            if (!calibresPorArmaMap.has(v.arma_id)) {
+              calibresPorArmaMap.set(v.arma_id, new Set());
+            }
+            calibresPorArmaMap.get(v.arma_id)!.add(v.calibre_id);
+          }
         });
         setMinPrecoPorArma(minMap);
+        setCalibresPorArma(calibresPorArmaMap);
         
         // Processar fotos - pegar apenas a primeira de cada arma
         const fotosMap = new Map<string, string>();

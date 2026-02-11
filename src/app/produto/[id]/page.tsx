@@ -34,6 +34,7 @@ type Variacao = {
   calibre_id: string | null;
   comprimento_cano: string;
   preco: number;
+  caracteristica_acabamento: string | null;
   calibre: { nome: string } | null;
 };
 
@@ -105,10 +106,10 @@ export default function ProdutoPage() {
 
         setFotos(fotosFormatadas);
 
-        // Buscar variações do produto (calibre + cano + preço)
+        // Buscar variações do produto (calibre + cano + preço + acabamento)
         const { data: variacoesData, error: variacoesError } = await supabase
           .from("variacoes_armas")
-          .select("id, calibre_id, comprimento_cano, preco")
+          .select("id, calibre_id, comprimento_cano, preco, caracteristica_acabamento")
           .eq("arma_id", produtoId)
           .order("comprimento_cano");
 
@@ -130,6 +131,7 @@ export default function ProdutoPage() {
               calibre_id: v.calibre_id,
               comprimento_cano: v.comprimento_cano,
               preco: parseFloat(v.preco),
+              caracteristica_acabamento: v.caracteristica_acabamento ?? null,
               calibre: v.calibre_id && calibresMap.has(v.calibre_id) ? { nome: calibresMap.get(v.calibre_id)! } : null,
             });
           });
@@ -193,6 +195,7 @@ export default function ProdutoPage() {
   const precoAtual = selectedVariacao != null ? selectedVariacao.preco : (produto?.preco ?? null);
   const calibreAtual = selectedVariacao != null ? selectedVariacao.calibre : produto?.calibre ?? null;
   const comprimentoCanoAtual = selectedVariacao != null ? selectedVariacao.comprimento_cano : (produto?.espec_comprimento_cano ?? null);
+  const acabamentoAtual = selectedVariacao?.caracteristica_acabamento ?? produto?.caracteristica_acabamento ?? null;
   const fotosAtual =
     variacoes.length > 0 && selectedVariacaoId
       ? fotos.filter((f) => f.variacao_id === selectedVariacaoId)
@@ -296,7 +299,7 @@ export default function ProdutoPage() {
         espec_capacidade_tiros: produto.espec_capacidade_tiros,
         espec_carregadores: produto.espec_carregadores,
         espec_comprimento_cano: comprimentoCanoAtual ?? produto.espec_comprimento_cano,
-        caracteristica_acabamento: produto.caracteristica_acabamento,
+        caracteristica_acabamento: acabamentoAtual ?? produto.caracteristica_acabamento,
         foto_url: fotoAtual?.foto_url || produto.foto_url,
       };
       await exportProductToPDF(produtoData, parcelas);
@@ -319,7 +322,7 @@ export default function ProdutoPage() {
         espec_capacidade_tiros: produto.espec_capacidade_tiros,
         espec_carregadores: produto.espec_carregadores,
         espec_comprimento_cano: comprimentoCanoAtual ?? produto.espec_comprimento_cano,
-        caracteristica_acabamento: produto.caracteristica_acabamento,
+        caracteristica_acabamento: acabamentoAtual ?? produto.caracteristica_acabamento,
         foto_url: fotoAtual?.foto_url || produto.foto_url,
       };
       await exportProductToImage(produtoData, parcelas);
@@ -342,7 +345,7 @@ export default function ProdutoPage() {
         espec_capacidade_tiros: produto.espec_capacidade_tiros,
         espec_carregadores: produto.espec_carregadores,
         espec_comprimento_cano: comprimentoCanoAtual ?? produto.espec_comprimento_cano,
-        caracteristica_acabamento: produto.caracteristica_acabamento,
+        caracteristica_acabamento: acabamentoAtual ?? produto.caracteristica_acabamento,
         foto_url: fotoAtual?.foto_url || produto.foto_url,
       };
       // Você pode passar um número de telefone opcional aqui
@@ -488,6 +491,7 @@ export default function ProdutoPage() {
                         }}
                       >
                         {v.calibre?.nome ?? "—"} • {v.comprimento_cano}
+                        {v.caracteristica_acabamento ? ` • ${v.caracteristica_acabamento}` : ""}
                       </button>
                     ))}
                   </div>
@@ -707,11 +711,11 @@ export default function ProdutoPage() {
                   </p>
                 </div>
               )}
-              {produto.caracteristica_acabamento && (
+              {acabamentoAtual && (
                 <div>
                   <p className="text-sm text-zinc-400">Acabamento</p>
                   <p className="text-lg font-semibold text-white">
-                    {produto.caracteristica_acabamento}
+                    {acabamentoAtual}
                   </p>
                 </div>
               )}

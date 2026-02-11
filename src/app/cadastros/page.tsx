@@ -57,6 +57,7 @@ type Variacao = {
   calibre_id: string;
   comprimento_cano: string;
   preco: string;
+  caracteristica_acabamento: string;
   fotoFiles?: File[];
   fotoPreviews?: string[];
   fotosExistentes?: FotoArma[];
@@ -433,6 +434,49 @@ export default function CadastrosPage() {
     setFotoPreviews(newPreviews);
   };
 
+  const definirFotoNovaComoCapa = (index: number) => {
+    if (index === 0) return;
+    const newFiles = [...fotoFiles];
+    const newPreviews = [...fotoPreviews];
+    
+    // Mover para primeira posição
+    const [fotoMovida] = newFiles.splice(index, 1);
+    const [previewMovido] = newPreviews.splice(index, 1);
+    
+    newFiles.unshift(fotoMovida);
+    newPreviews.unshift(previewMovido);
+    
+    setFotoFiles(newFiles);
+    setFotoPreviews(newPreviews);
+  };
+
+  const definirFotoExistenteComoCapa = (fotoId: string) => {
+    const foto = fotosExistentes.find(f => f.id === fotoId);
+    if (!foto || foto.ordem === 0) return;
+    
+    // Reordenar: mover a foto selecionada para ordem 0 e ajustar as outras
+    const novasFotos = [...fotosExistentes];
+    
+    // Ordenar por ordem atual
+    novasFotos.sort((a, b) => a.ordem - b.ordem);
+    
+    // Encontrar o índice da foto a ser movida
+    const index = novasFotos.findIndex(f => f.id === fotoId);
+    
+    // Remover a foto da posição atual
+    const [fotoMovida] = novasFotos.splice(index, 1);
+    
+    // Inserir no início
+    novasFotos.unshift(fotoMovida);
+    
+    // Reordenar todas as fotos (a primeira terá ordem 0, segunda ordem 1, etc.)
+    novasFotos.forEach((f, i) => {
+      f.ordem = i;
+    });
+    
+    setFotosExistentes(novasFotos);
+  };
+
   const removeFotoExistente = (fotoId: string) => {
     setFotosParaRemover([...fotosParaRemover, fotoId]);
     setFotosExistentes(fotosExistentes.filter(f => f.id !== fotoId));
@@ -441,7 +485,7 @@ export default function CadastrosPage() {
   const addVariacao = () => {
     setVariacoes((prev) => [
       ...prev,
-      { calibre_id: "", comprimento_cano: "", preco: "", fotoFiles: [], fotoPreviews: [], fotosExistentes: [], fotosParaRemover: [] },
+      { calibre_id: "", comprimento_cano: "", preco: "", caracteristica_acabamento: "", fotoFiles: [], fotoPreviews: [], fotosExistentes: [], fotosParaRemover: [] },
     ]);
   };
 
@@ -530,7 +574,7 @@ export default function CadastrosPage() {
     const [variacoesResult, fotosResult] = await Promise.all([
       supabase
         .from("variacoes_armas")
-        .select("id, calibre_id, comprimento_cano, preco")
+        .select("id, calibre_id, comprimento_cano, preco, caracteristica_acabamento")
         .eq("arma_id", arma.id)
         .order("created_at", { ascending: true }),
       supabase
@@ -567,12 +611,25 @@ export default function CadastrosPage() {
         calibre_id: v.calibre_id || "",
         comprimento_cano: v.comprimento_cano || "",
         preco: v.preco != null ? Number(v.preco).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "",
+        caracteristica_acabamento: v.caracteristica_acabamento ?? "",
         fotosExistentes: fotosPorVariacao.get(v.id) || [],
         fotosParaRemover: [] as string[],
       }));
       
       setVariacoes(variacoesComFotos);
     }
+
+    // Carregar fotos gerais (sem variacao_id) ordenadas
+    const fotosGerais = fotosData
+      .filter((foto: any) => !foto.variacao_id)
+      .map((foto: any) => ({
+        id: foto.id,
+        foto_url: foto.foto_url,
+        ordem: foto.ordem || 0,
+      }))
+      .sort((a, b) => a.ordem - b.ordem);
+    
+    setFotosExistentes(fotosGerais);
 
     setShowModal(true);
   };
@@ -676,13 +733,13 @@ export default function CadastrosPage() {
             if (v.id) {
               await supabase
                 .from("variacoes_armas")
-                .update({ calibre_id: v.calibre_id || null, comprimento_cano: v.comprimento_cano.trim(), preco: precoVar })
+                .update({ calibre_id: v.calibre_id || null, comprimento_cano: v.comprimento_cano.trim(), preco: precoVar, caracteristica_acabamento: (v.caracteristica_acabamento?.trim() || null) })
                 .eq("id", v.id);
               variacaoId = v.id;
             } else {
               const { data: inserted, error: insErr } = await supabase
                 .from("variacoes_armas")
-                .insert({ arma_id: editingId, calibre_id: v.calibre_id || null, comprimento_cano: v.comprimento_cano.trim(), preco: precoVar })
+                .insert({ arma_id: editingId, calibre_id: v.calibre_id || null, comprimento_cano: v.comprimento_cano.trim(), preco: precoVar, caracteristica_acabamento: (v.caracteristica_acabamento?.trim() || null) })
                 .select("id")
                 .single();
               if (insErr || !inserted) throw insErr || new Error("Erro ao criar variação");
@@ -757,7 +814,7 @@ export default function CadastrosPage() {
             if (precoVar == null) continue;
             const { data: varRow, error: varErr } = await supabase
               .from("variacoes_armas")
-              .insert({ arma_id: armaId, calibre_id: v.calibre_id || null, comprimento_cano: v.comprimento_cano.trim(), preco: precoVar })
+              .insert({ arma_id: armaId, calibre_id: v.calibre_id || null, comprimento_cano: v.comprimento_cano.trim(), preco: precoVar, caracteristica_acabamento: (v.caracteristica_acabamento?.trim() || null) })
               .select("id")
               .single();
             if (varErr || !varRow) throw varErr || new Error("Erro ao criar variação");
@@ -867,26 +924,29 @@ export default function CadastrosPage() {
           }
         }
 
+        // Atualizar ordem das fotos existentes (garantir que a primeira tenha ordem 0)
+        if (fotosExistentes.length > 0) {
+          try {
+            const fotosOrdenadas = [...fotosExistentes].sort((a, b) => a.ordem - b.ordem);
+            const updatePromises = fotosOrdenadas.map((foto, index) =>
+              supabase
+                .from("fotos_armas")
+                .update({ ordem: index })
+                .eq("id", foto.id)
+            );
+            await Promise.all(updatePromises);
+          } catch (err: any) {
+            console.warn("Erro ao atualizar ordem das fotos existentes:", err);
+          }
+        }
+
         // Fazer upload de novas fotos
         if (fotoFiles.length > 0) {
-          // Buscar a maior ordem atual para continuar a numeração
-          let ordemInicial = 0;
-          
-          try {
-            const { data: fotosAtuais, error: fotosError } = await supabase
-              .from("fotos_armas")
-              .select("ordem")
-              .eq("arma_id", editingId)
-              .order("ordem", { ascending: false })
-              .limit(1);
-
-            if (!fotosError && fotosAtuais && fotosAtuais.length > 0) {
-              ordemInicial = (fotosAtuais[0] as any).ordem + 1;
-            }
-          } catch (err) {
-            console.warn("Erro ao buscar ordem das fotos (tabela pode não existir):", err);
-            ordemInicial = 0;
-          }
+          // Calcular ordem inicial: se há fotos existentes, começar após a última; senão, começar em 0
+          const fotosExistentesOrdenadas = [...fotosExistentes].sort((a, b) => a.ordem - b.ordem);
+          const ordemInicial = fotosExistentesOrdenadas.length > 0 
+            ? fotosExistentesOrdenadas.length 
+            : 0;
 
           const uploadPromises = fotoFiles.map(async (file, index) => {
             const fileExt = file.name.split(".").pop();
@@ -1755,24 +1815,48 @@ export default function CadastrosPage() {
                     {/* Fotos existentes (apenas na edição) */}
                     {editingId && fotosExistentes.length > 0 && (
                       <div className="mt-4">
-                        <p className="mb-2 text-sm text-zinc-400">Fotos existentes:</p>
+                        <p className="mb-2 text-sm text-zinc-400">
+                          Fotos existentes (a primeira será exibida como capa):
+                        </p>
                         <div className="grid grid-cols-3 gap-4">
-                          {fotosExistentes.map((foto) => (
+                          {fotosExistentes
+                            .sort((a, b) => a.ordem - b.ordem)
+                            .map((foto, index) => (
                             <div key={foto.id} className="relative">
                               <img
                                 src={foto.foto_url}
                                 alt={`Foto ${foto.ordem + 1}`}
-                                className="h-24 w-full rounded object-cover"
+                                className={`h-24 w-full rounded object-cover ${index === 0 ? 'ring-2 ring-[#E9B20E]' : ''}`}
                               />
-                              <button
-                                type="button"
-                                onClick={() => removeFotoExistente(foto.id)}
-                                className="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
-                              >
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
+                              {index === 0 && (
+                                <div className="absolute left-1 top-1 rounded bg-[#E9B20E] px-2 py-0.5 text-xs font-bold text-zinc-900">
+                                  CAPA
+                                </div>
+                              )}
+                              <div className="absolute right-1 top-1 flex flex-col gap-1">
+                                {index !== 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => definirFotoExistenteComoCapa(foto.id)}
+                                    className="rounded-full bg-[#E9B20E] p-1 text-white hover:bg-[#D4A00D]"
+                                    title="Definir como capa"
+                                  >
+                                    <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                    </svg>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => removeFotoExistente(foto.id)}
+                                  className="rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
+                                  title="Remover foto"
+                                >
+                                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1782,24 +1866,46 @@ export default function CadastrosPage() {
                     {/* Preview das fotos selecionadas */}
                     {fotoPreviews.length > 0 && (
                       <div className="mt-4">
-                        <p className="mb-2 text-sm text-zinc-400">Novas fotos selecionadas:</p>
+                        <p className="mb-2 text-sm text-zinc-400">
+                          Novas fotos selecionadas (a primeira será exibida como capa):
+                        </p>
                         <div className="grid grid-cols-3 gap-4">
                           {fotoPreviews.map((preview, index) => (
                             <div key={index} className="relative">
                               <img
                                 src={preview}
                                 alt={`Preview ${index + 1}`}
-                                className="h-24 w-full rounded object-cover"
+                                className={`h-24 w-full rounded object-cover ${index === 0 ? 'ring-2 ring-[#E9B20E]' : ''}`}
                               />
-                              <button
-                                type="button"
-                                onClick={() => removeFoto(index)}
-                                className="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
-                              >
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
+                              {index === 0 && (
+                                <div className="absolute left-1 top-1 rounded bg-[#E9B20E] px-2 py-0.5 text-xs font-bold text-zinc-900">
+                                  CAPA
+                                </div>
+                              )}
+                              <div className="absolute right-1 top-1 flex flex-col gap-1">
+                                {index !== 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => definirFotoNovaComoCapa(index)}
+                                    className="rounded-full bg-[#E9B20E] p-1 text-white hover:bg-[#D4A00D]"
+                                    title="Definir como capa"
+                                  >
+                                    <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                    </svg>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => removeFoto(index)}
+                                  className="rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
+                                  title="Remover foto"
+                                >
+                                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1843,7 +1949,7 @@ export default function CadastrosPage() {
                 <section className="rounded-xl border border-zinc-700/50 bg-zinc-900/30 p-6">
                   <div className="mb-4 flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-white">
-                      Variações (calibre, tamanho de cano e valor)
+                      Variações (calibre, tamanho de cano, valor e acabamento)
                     </h3>
                     <button
                       type="button"
@@ -1870,7 +1976,7 @@ export default function CadastrosPage() {
                             Remover
                           </button>
                         </div>
-                        <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                           <div>
                             <label className={labelClass}>Calibre</label>
                             <select
@@ -1902,6 +2008,16 @@ export default function CadastrosPage() {
                               onChange={(e) => updateVariacao(idx, "preco", e.target.value)}
                               className={inputClass}
                               placeholder="0,00"
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass}>Acabamento</label>
+                            <input
+                              type="text"
+                              value={v.caracteristica_acabamento}
+                              onChange={(e) => updateVariacao(idx, "caracteristica_acabamento", e.target.value)}
+                              className={inputClass}
+                              placeholder="Ex.: fosco, niquelado"
                             />
                           </div>
                         </div>
